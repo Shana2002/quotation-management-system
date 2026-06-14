@@ -19,9 +19,9 @@ final class SettingController extends Controller
 {
     /** Editable text setting keys. */
     private const KEYS = [
-        'company_name', 'company_address', 'company_phone', 'company_email',
-        'company_website', 'quotation_prefix', 'tax_rate', 'currency_symbol',
-        'default_terms',
+        'company_name', 'company_reg_no', 'company_address', 'company_phone',
+        'company_email', 'company_website', 'quotation_prefix', 'tax_rate',
+        'currency_symbol', 'signatory_name', 'signatory_title', 'default_terms',
     ];
 
     public function index(): void

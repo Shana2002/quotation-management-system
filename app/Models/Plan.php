@@ -13,7 +13,7 @@ final class Plan extends Model
 {
     protected string $table = 'plans';
 
-    protected array $fillable = ['name', 'description', 'amount', 'status'];
+    protected array $fillable = ['name', 'plan_type', 'description', 'amount', 'parameters', 'benefits', 'status'];
 
     /**
      * Only active plans (for quotation building dropdowns).
@@ -23,5 +23,17 @@ final class Plan extends Model
     public function active(): array
     {
         return $this->where(['status' => 'active'], 'name', 'ASC');
+    }
+
+    /**
+     * Decode a plan row's `parameters` JSON into an array.
+     *
+     * @param array<string,mixed> $plan
+     * @return array<string,mixed>
+     */
+    public static function parameters(array $plan): array
+    {
+        $decoded = json_decode((string) ($plan['parameters'] ?? ''), true);
+        return is_array($decoded) ? $decoded : [];
     }
 }

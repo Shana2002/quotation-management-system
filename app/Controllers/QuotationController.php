@@ -6,25 +6,25 @@ namespace App\Controllers;
 
 use App\Core\Auth;
 use App\Core\Controller;
-use App\Core\Database;
 use App\Core\Flash;
 use App\Core\Response;
-use App\Core\Session;
 use App\Core\Validator;
 use App\Models\ActivityLog;
 use App\Models\Customer;
 use App\Models\Plan;
 use App\Models\Quotation;
-use App\Models\QuotationItem;
 use App\Models\Setting;
+use App\PlanTypes\PlanTypeRegistry;
 use App\Services\PdfService;
 use App\Services\QuotationNumberService;
 
 /**
  * QuotationController
  *
- * Create, list, view, status-update, delete quotations and stream their PDFs.
- * All reads/writes are scoped to what the current user is permitted to see.
+ * Plan-type quotations: the operator picks a customer + an OXIAURA plan, fills
+ * the plan-specific inputs, and the system computes a projection (intro + table
+ * + summary) that is stored as JSON and rendered both on screen and as a
+ * letter-style PDF. All reads/writes are scoped per role.
  */
 final class QuotationController extends Controller
 {
@@ -38,13 +38,27 @@ final class QuotationController extends Controller
 
     public function create(): void
     {
-        $settings = new Setting();
+        $plans = (new Plan())->active();
+
+        // Pre-build each plan's input-field schema (crop options depend on params).
+        $planForms = [];
+        foreach ($plans as $plan) {
+            $type = PlanTypeRegistry::get($plan['plan_type']);
+            if ($type === null) {
+                continue;
+            }
+            $planForms[$plan['id']] = [
+                'type_label' => $type->label(),
+                'note'       => $type->formulaNote(),
+                'fields'     => $type->inputFields(Plan::parameters($plan)),
+            ];
+        }
+
         $this->view('quotations/create', [
-            'title'        => 'New Quotation',
-            'customers'    => (new Customer())->allWithCreator(),
-            'plans'        => (new Plan())->active(),
-            'defaultTerms' => $settings->get('default_terms'),
-            'taxRate'      => (float) $settings->get('tax_rate', '0'),
+            'title'            => 'New Quotation',
+            'customers'        => (new Customer())->allWithCreator(),
+            'plans'            => $plans,
+            'planForms'        => $planForms,
             'selectedCustomer' => (int) $this->request->input('customer_id', 0),
         ]);
     }
@@ -52,69 +66,70 @@ final class QuotationController extends Controller
     public function store(): void
     {
         $this->verifyCsrf();
-
         $input = $this->request->all();
-        $items = $this->sanitiseItems($input['items'] ?? []);
 
         $validator = new Validator($input, [
             'customer_id' => 'required|integer',
+            'plan_id'     => 'required|integer',
             'expiry_date' => 'date',
         ]);
 
-        if ($validator->fails() || $items === []) {
-            $errors = $validator->flatErrors();
-            if ($items === []) {
-                $errors[] = 'At least one valid line item is required.';
-            }
+        $plan = (new Plan())->find((int) ($input['plan_id'] ?? 0));
+        $type = $plan !== null ? PlanTypeRegistry::get($plan['plan_type']) : null;
+
+        $errors = $validator->flatErrors();
+        if ($plan === null || $type === null) {
+            $errors[] = 'Please select a valid plan.';
+        }
+
+        if ($errors !== []) {
             $this->back('/quotations/create', $errors, ['customer_id' => $input['customer_id'] ?? '']);
             return;
         }
 
-        // Compute monetary totals on the server (never trust client values).
-        $subtotal = 0.0;
-        foreach ($items as &$item) {
-            $item['line_total'] = round($item['quantity'] * $item['unit_price'], 2);
-            $subtotal += $item['line_total'];
+        // Capture only the inputs declared by this plan type.
+        $params = Plan::parameters($plan);
+        $inputs = [];
+        foreach ($type->inputFields($params) as $field) {
+            $inputs[$field['name']] = $input[$field['name']] ?? null;
         }
-        unset($item);
 
-        $discount = max(0.0, (float) ($input['discount'] ?? 0));
-        $taxRate  = max(0.0, (float) ($input['tax_rate'] ?? 0));
-        $taxable  = max($subtotal - $discount, 0);
-        $tax      = round($taxable * ($taxRate / 100), 2);
-        $total    = round($taxable + $tax, 2);
-
-        $numberService = new QuotationNumberService();
-
-        $db = Database::connection();
-        $db->beginTransaction();
-        try {
-            $quotationModel = new Quotation();
-            $quotationId = $quotationModel->create([
-                'quotation_number'   => $numberService->next(),
-                'customer_id'        => (int) $input['customer_id'],
-                'created_by'         => Auth::id(),
-                'subtotal'           => $subtotal,
-                'discount'           => $discount,
-                'tax'                => $tax,
-                'total'              => $total,
-                'notes'              => trim((string) ($input['notes'] ?? '')),
-                'terms'              => trim((string) ($input['terms'] ?? '')),
-                'expiry_date'        => !empty($input['expiry_date']) ? $input['expiry_date'] : null,
-                'status'             => in_array($input['status'] ?? 'draft', ['draft', 'sent'], true) ? $input['status'] : 'draft',
-                'verification_token' => $numberService->token(),
-            ]);
-
-            (new QuotationItem())->replaceForQuotation($quotationId, $items);
-            $db->commit();
-        } catch (\Throwable $e) {
-            $db->rollBack();
-            Flash::error('Could not save the quotation. Please try again.');
-            $this->back('/quotations/create');
+        $inputErrors = $type->validate($inputs);
+        if ($inputErrors !== []) {
+            $this->back('/quotations/create', $inputErrors, ['customer_id' => $input['customer_id']]);
             return;
         }
 
-        ActivityLog::log('create', 'quotation', $quotationId, 'Created quotation ' . ($input['customer_id'] ?? ''));
+        // Compute the projection and enrich it with self-contained render data
+        // (label, title, benefits snapshot) so historical PDFs never change.
+        $projection = $type->compute($inputs, $params);
+        $projection['plan_label']   = $type->label();
+        $projection['letter_title'] = $type->letterTitle();
+        $projection['benefits']     = (string) ($plan['benefits'] ?? '');
+
+        $headline = (float) ($projection['headline_amount'] ?? 0);
+        $numberService = new QuotationNumberService();
+
+        $quotationId = (new Quotation())->create([
+            'quotation_number'   => $numberService->next(),
+            'customer_id'        => (int) $input['customer_id'],
+            'created_by'         => Auth::id(),
+            'plan_id'            => (int) $plan['id'],
+            'plan_type'          => $plan['plan_type'],
+            'inputs'             => json_encode($inputs, JSON_UNESCAPED_UNICODE),
+            'projection'         => json_encode($projection, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'subtotal'           => $headline,
+            'discount'           => 0,
+            'tax'                => 0,
+            'total'              => $headline,
+            'notes'              => trim((string) ($input['notes'] ?? '')),
+            'terms'              => trim((string) ($input['terms'] ?? '')),
+            'expiry_date'        => !empty($input['expiry_date']) ? $input['expiry_date'] : null,
+            'status'             => in_array($input['status'] ?? 'draft', ['draft', 'sent'], true) ? $input['status'] : 'draft',
+            'verification_token' => $numberService->token(),
+        ]);
+
+        ActivityLog::log('create', 'quotation', $quotationId, 'Created ' . $type->label() . ' quotation');
         Flash::success('Quotation created successfully.');
         $this->redirect('/quotations/' . $quotationId);
     }
@@ -126,14 +141,11 @@ final class QuotationController extends Controller
             return;
         }
 
-        $settings = new Setting();
-        $verifyUrl = url('/verify/' . $quotation['verification_token']);
-
         $this->view('quotations/show', [
-            'title'     => $quotation['quotation_number'],
-            'quotation' => $quotation,
-            'items'     => (new QuotationItem())->forQuotation((int) $id),
-            'verifyUrl' => $verifyUrl,
+            'title'      => $quotation['quotation_number'],
+            'quotation'  => $quotation,
+            'projection' => Quotation::projection($quotation),
+            'verifyUrl'  => url('/verify/' . $quotation['verification_token']),
         ]);
     }
 
@@ -144,11 +156,11 @@ final class QuotationController extends Controller
             return;
         }
 
-        $items    = (new QuotationItem())->forQuotation((int) $id);
-        $settings = (new Setting())->allAsMap();
-        $verifyUrl = url('/verify/' . $quotation['verification_token']);
+        $settings   = (new Setting())->allAsMap();
+        $projection = Quotation::projection($quotation);
+        $verifyUrl  = url('/verify/' . $quotation['verification_token']);
 
-        $pdf = (new PdfService())->generateQuotation($quotation, $items, $settings, $verifyUrl);
+        $pdf = (new PdfService())->generateQuotation($quotation, $projection, $settings, $verifyUrl);
 
         ActivityLog::log('download', 'quotation', (int) $id, 'Downloaded quotation PDF');
         Response::download($pdf, $quotation['quotation_number'] . '.pdf');
@@ -162,7 +174,7 @@ final class QuotationController extends Controller
             return;
         }
 
-        $status = (string) $this->request->input('status', '');
+        $status  = (string) $this->request->input('status', '');
         $allowed = ['draft', 'sent', 'accepted', 'rejected', 'expired'];
         if (!in_array($status, $allowed, true)) {
             Flash::error('Invalid status.');
@@ -184,7 +196,7 @@ final class QuotationController extends Controller
             return;
         }
 
-        (new Quotation())->delete((int) $id); // items cascade via FK
+        (new Quotation())->delete((int) $id);
         ActivityLog::log('delete', 'quotation', (int) $id, 'Deleted quotation ' . $quotation['quotation_number']);
         Flash::success('Quotation deleted.');
         $this->redirect('/quotations');
@@ -193,7 +205,7 @@ final class QuotationController extends Controller
     /* ------------------------------------------------------------------ */
 
     /**
-     * Fetch a quotation and enforce per-role access; handles the redirect
+     * Fetch a quotation and enforce per-role access; handles the redirect/abort
      * and returns null when not found / not permitted.
      *
      * @return array<string,mixed>|null
@@ -215,42 +227,5 @@ final class QuotationController extends Controller
         }
 
         return $quotation;
-    }
-
-    /**
-     * Normalise and filter posted line items into a clean array.
-     *
-     * @param mixed $raw
-     * @return array<int,array<string,mixed>>
-     */
-    private function sanitiseItems(mixed $raw): array
-    {
-        if (!is_array($raw)) {
-            return [];
-        }
-
-        $items = [];
-        foreach ($raw as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-            $description = trim((string) ($row['description'] ?? ''));
-            $quantity    = (float) ($row['quantity'] ?? 0);
-            $unitPrice   = (float) ($row['unit_price'] ?? 0);
-
-            if ($description === '' || $quantity <= 0) {
-                continue;
-            }
-
-            $items[] = [
-                'plan_id'     => !empty($row['plan_id']) ? (int) $row['plan_id'] : null,
-                'description' => mb_substr($description, 0, 500),
-                'quantity'    => $quantity,
-                'unit_price'  => $unitPrice,
-                'line_total'  => 0.0, // recomputed in store()
-            ];
-        }
-
-        return $items;
     }
 }

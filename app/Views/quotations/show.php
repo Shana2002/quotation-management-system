@@ -1,9 +1,16 @@
 <?php
-/** Quotation detail view. */
+/** Plan-type quotation detail view. */
 $statuses = ['draft', 'sent', 'accepted', 'rejected', 'expired'];
+$headers = $projection['headers'] ?? [];
+$rows    = $projection['rows'] ?? [];
+$summary = $projection['summary'] ?? [];
+$benefits = trim((string) ($projection['benefits'] ?? ''));
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h4 class="mb-0"><i class="bi bi-file-earmark-text"></i> <?= e($quotation['quotation_number']) ?></h4>
+    <div>
+        <h4 class="mb-0"><i class="bi bi-file-earmark-text"></i> <?= e($quotation['quotation_number']) ?></h4>
+        <span class="badge text-bg-info mt-1"><?= e($projection['plan_label'] ?? $quotation['plan_type']) ?></span>
+    </div>
     <div class="d-flex gap-2">
         <a href="<?= e(url('/quotations/' . $quotation['id'] . '/pdf')) ?>" class="btn btn-danger"><i class="bi bi-file-pdf"></i> Download PDF</a>
         <a href="<?= e(url('/quotations')) ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Back</a>
@@ -16,7 +23,7 @@ $statuses = ['draft', 'sent', 'accepted', 'rejected', 'expired'];
             <div class="card-body">
                 <div class="row mb-4">
                     <div class="col-sm-6">
-                        <h6 class="text-muted">Bill To</h6>
+                        <h6 class="text-muted">Prepared For</h6>
                         <div class="fw-bold"><?= e($quotation['customer_name']) ?></div>
                         <div class="small"><?= nl2br(e($quotation['customer_address'] ?? '')) ?></div>
                         <div class="small">NIC: <?= e($quotation['customer_nic'] ?? '—') ?></div>
@@ -30,40 +37,42 @@ $statuses = ['draft', 'sent', 'accepted', 'rejected', 'expired'];
                     </div>
                 </div>
 
+                <?php if (!empty($projection['intro'])): ?>
+                    <p><?= e($projection['intro']) ?></p>
+                <?php endif; ?>
+
                 <div class="table-responsive">
-                    <table class="table">
-                        <thead>
-                            <tr><th>#</th><th>Description</th><th class="text-center">Qty</th><th class="text-end">Unit Price</th><th class="text-end">Amount</th></tr>
+                    <table class="table table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr><?php foreach ($headers as $h): ?><th class="text-center"><?= e($h) ?></th><?php endforeach; ?></tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($items as $i => $item): ?>
-                                <tr>
-                                    <td><?= $i + 1 ?></td>
-                                    <td><?= e($item['description']) ?></td>
-                                    <td class="text-center"><?= e(number_format((float) $item['quantity'], 2)) ?></td>
-                                    <td class="text-end"><?= e(money($item['unit_price'])) ?></td>
-                                    <td class="text-end"><?= e(money($item['line_total'])) ?></td>
-                                </tr>
+                            <?php foreach ($rows as $row): ?>
+                                <tr><?php foreach ($row as $cell): ?><td class="text-center fw-semibold"><?= e($cell) ?></td><?php endforeach; ?></tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
 
-                <div class="row justify-content-end">
-                    <div class="col-sm-5">
-                        <div class="d-flex justify-content-between small"><span class="text-muted">Subtotal</span><span><?= e(money($quotation['subtotal'])) ?></span></div>
-                        <div class="d-flex justify-content-between small"><span class="text-muted">Discount</span><span>- <?= e(money($quotation['discount'])) ?></span></div>
-                        <div class="d-flex justify-content-between small"><span class="text-muted">Tax</span><span><?= e(money($quotation['tax'])) ?></span></div>
-                        <hr class="my-1">
-                        <div class="d-flex justify-content-between fw-bold fs-5"><span>Total</span><span><?= e(money($quotation['total'])) ?></span></div>
+                <?php if ($summary !== []): ?>
+                    <div class="row justify-content-end">
+                        <div class="col-sm-6">
+                            <?php foreach ($summary as $label => $value): ?>
+                                <div class="d-flex justify-content-between small <?= str_contains(strtolower($label), 'total') || str_contains(strtolower($label), 'maturity') ? 'fw-bold fs-6 border-top pt-1 mt-1' : '' ?>">
+                                    <span class="text-muted"><?= e($label) ?></span><span><?= e($value) ?></span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
-                </div>
+                <?php endif; ?>
+
+                <?php if ($benefits !== ''): ?>
+                    <hr><h6 class="text-muted">Benefits &amp; Conditions</h6>
+                    <div class="small text-muted"><?= nl2br(e($benefits)) ?></div>
+                <?php endif; ?>
 
                 <?php if (!empty($quotation['notes'])): ?>
                     <hr><h6 class="text-muted">Notes</h6><p class="small mb-0"><?= nl2br(e($quotation['notes'])) ?></p>
-                <?php endif; ?>
-                <?php if (!empty($quotation['terms'])): ?>
-                    <hr><h6 class="text-muted">Terms &amp; Conditions</h6><p class="small text-muted mb-0"><?= nl2br(e($quotation['terms'])) ?></p>
                 <?php endif; ?>
             </div>
         </div>
@@ -95,15 +104,11 @@ $statuses = ['draft', 'sent', 'accepted', 'rejected', 'expired'];
     </div>
 </div>
 
-<!-- Render the same verification QR on screen using a lightweight library -->
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         if (window.QRCode) {
-            new QRCode(document.getElementById('qrcode'), {
-                text: <?= json_encode($verifyUrl) ?>,
-                width: 140, height: 140
-            });
+            new QRCode(document.getElementById('qrcode'), { text: <?= json_encode($verifyUrl) ?>, width: 140, height: 140 });
         }
     });
 </script>

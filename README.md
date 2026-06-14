@@ -12,11 +12,16 @@ role-based access control, professional PDF quotations with QR verification, and
   - *Executive*: generate and manage own quotations
 - **Authentication** — bcrypt hashing, hardened sessions, login activity tracking, CSRF protection
 - **Customers** — CRUD with per-customer quotation history (name, address, telephone, NIC, email)
-- **Plans** — CRUD with active/inactive status
-- **Quotations** — auto-numbered (`QTN-YYYYMM-NNNN`), multi line-item builder with live totals,
-  discount/tax, notes, terms, expiry, status workflow
-- **PDF** — professional A4 quotation with company logo, breakdown, terms, signature block and a
-  **native QR code** linking to a public verification page
+- **Plan types** — six OXIAURA investment products, each with its own inputs, calculation and
+  projection: **Royal Plus** & **Guaranteed Plus** (interest/harvest income, monthly or annual),
+  **Monthly Wealth** & **Supreme Plus** (one-time / pay-in then monthly re-payment + maturity),
+  **Golden Crop** (plant on the customer's land, priced per 10 perches) and **Plant Selling**
+  (direct plant sale). Rates/prices/benefits are **admin-editable** per plan (no code changes)
+- **Quotations** — pick a customer + plan, fill plan-specific inputs; the system computes the
+  projection (capital, harvest/maturity, etc.), auto-numbers (`QTN-YYYYMM-NNNN`), and stores a
+  self-contained projection snapshot; status workflow + expiry
+- **PDF** — professional A4 **letter-style** quotation (branded letterhead, addressee, plan-specific
+  projection table, benefits, signatory) with a **native QR code** linking to a public verification page
 - **Public verification** — `/verify/{token}` confirms a quotation's authenticity (QR target)
 - **Reports** — daily, monthly and employee-performance reports with charts + PDF export
 - **Dashboard** — role-aware stat cards, trend & status charts, recent quotations

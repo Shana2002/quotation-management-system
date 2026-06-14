@@ -1,4 +1,4 @@
-<?php /** Plans listing. */ ?>
+<?php /** Plans listing (plan-type products). */ ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="mb-0"><i class="bi bi-box-seam"></i> Plans</h4>
     <?php if (can('admin')): ?>
@@ -8,14 +8,12 @@
 
 <div class="card shadow-sm">
     <div class="card-body">
-        <input type="text" class="form-control mb-3" placeholder="Search plans..."
-               data-table-filter="#plans-table">
+        <input type="text" class="form-control mb-3" placeholder="Search plans..." data-table-filter="#plans-table">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0" id="plans-table">
                 <thead>
                     <tr>
-                        <th>Name</th><th>Description</th>
-                        <th class="text-end">Amount</th><th>Status</th>
+                        <th>Name</th><th>Type</th><th>Description</th><th>Status</th>
                         <?php if (can('admin')): ?><th class="text-end">Actions</th><?php endif; ?>
                     </tr>
                 </thead>
@@ -26,8 +24,8 @@
                         <?php foreach ($plans as $plan): ?>
                             <tr>
                                 <td class="fw-semibold"><?= e($plan['name']) ?></td>
+                                <td><span class="badge text-bg-info"><?= e($typeMap[$plan['plan_type']] ?? $plan['plan_type']) ?></span></td>
                                 <td class="text-muted small"><?= e(mb_strimwidth((string) $plan['description'], 0, 70, '…')) ?></td>
-                                <td class="text-end"><?= e(money($plan['amount'])) ?></td>
                                 <td><span class="badge text-bg-<?= e(status_badge($plan['status'])) ?>"><?= e(ucfirst($plan['status'])) ?></span></td>
                                 <?php if (can('admin')): ?>
                                     <td class="text-end text-nowrap">

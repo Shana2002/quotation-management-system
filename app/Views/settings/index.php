@@ -13,10 +13,15 @@ $logo = $settings['company_logo'] ?? '';
         <div class="card shadow-sm">
             <div class="card-header bg-transparent">Company Information</div>
             <div class="card-body row g-3">
-                <div class="col-md-6">
+                <div class="col-md-8">
                     <label class="form-label">Company Name <span class="text-danger">*</span></label>
                     <input type="text" name="company_name" class="form-control" required
                            value="<?= e(old('company_name', $settings['company_name'] ?? '')) ?>">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Registration No.</label>
+                    <input type="text" name="company_reg_no" class="form-control"
+                           value="<?= e(old('company_reg_no', $settings['company_reg_no'] ?? '')) ?>">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Email</label>
@@ -57,6 +62,17 @@ $logo = $settings['company_logo'] ?? '';
                     <label class="form-label">Currency Symbol</label>
                     <input type="text" name="currency_symbol" class="form-control"
                            value="<?= e(old('currency_symbol', $settings['currency_symbol'] ?? 'Rs.')) ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">PDF Signatory Name</label>
+                    <input type="text" name="signatory_name" class="form-control"
+                           value="<?= e(old('signatory_name', $settings['signatory_name'] ?? '')) ?>">
+                    <div class="form-text">Printed in the signature block of the quotation letter.</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">PDF Signatory Title</label>
+                    <input type="text" name="signatory_title" class="form-control"
+                           value="<?= e(old('signatory_title', $settings['signatory_title'] ?? '')) ?>">
                 </div>
                 <div class="col-12">
                     <label class="form-label">Default Terms &amp; Conditions</label>

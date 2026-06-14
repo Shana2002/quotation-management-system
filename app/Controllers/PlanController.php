@@ -6,22 +6,26 @@ namespace App\Controllers;
 
 use App\Core\Controller;
 use App\Core\Flash;
+use App\Core\Session;
 use App\Core\Validator;
 use App\Models\ActivityLog;
 use App\Models\Plan;
+use App\PlanTypes\PlanTypeRegistry;
 
 /**
- * PlanController — CRUD for sellable plans. Reads are open to all roles
- * (so quotations can reference plans); writes are admin-only (enforced
- * by route middleware).
+ * PlanController — CRUD for OXIAURA's plan-type products. Reads are open to all
+ * roles (so quotations can reference plans); writes are admin-only (enforced by
+ * route middleware). Each plan carries a plan_type, an editable `parameters`
+ * JSON (rates/prices), and `benefits` text.
  */
 final class PlanController extends Controller
 {
     public function index(): void
     {
         $this->view('plans/index', [
-            'title' => 'Plans',
-            'plans' => (new Plan())->all('name', 'ASC'),
+            'title'   => 'Plans',
+            'plans'   => (new Plan())->all('name', 'ASC'),
+            'typeMap' => PlanTypeRegistry::options(),
         ]);
     }
 
@@ -30,6 +34,7 @@ final class PlanController extends Controller
         $this->view('plans/form', [
             'title' => 'New Plan',
             'plan'  => null,
+            'types' => PlanTypeRegistry::all(),
         ]);
     }
 
@@ -60,6 +65,7 @@ final class PlanController extends Controller
         $this->view('plans/form', [
             'title' => 'Edit Plan',
             'plan'  => $plan,
+            'types' => PlanTypeRegistry::all(),
         ]);
     }
 
@@ -99,30 +105,49 @@ final class PlanController extends Controller
     }
 
     /**
-     * Validate plan input; returns the clean data or null on failure
-     * (errors + old input are flashed by the caller via back()).
+     * Validate plan input. The `parameters` field must be valid JSON whose
+     * shape matches the chosen plan type.
      *
      * @return array<string,mixed>|null
      */
     private function validatePlan(): ?array
     {
-        $input = $this->request->only(['name', 'description', 'amount', 'status']);
+        $input = $this->request->only(['name', 'plan_type', 'description', 'benefits', 'parameters', 'status']);
+
         $validator = new Validator($input, [
-            'name'   => 'required|max:150',
-            'amount' => 'required|numeric',
-            'status' => 'required|in:active,inactive',
+            'name'      => 'required|max:150',
+            'plan_type' => 'required',
+            'status'    => 'required|in:active,inactive',
         ]);
 
-        if ($validator->fails()) {
-            \App\Core\Session::set('errors', $validator->flatErrors());
-            \App\Core\Session::set('old', $input);
+        $errors = $validator->flatErrors();
+
+        if (PlanTypeRegistry::get((string) $input['plan_type']) === null) {
+            $errors[] = 'Unknown plan type.';
+        }
+
+        // Parameters must be valid JSON (empty allowed → {}).
+        $params = trim((string) ($input['parameters'] ?? ''));
+        if ($params !== '') {
+            json_decode($params);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $errors[] = 'Parameters must be valid JSON: ' . json_last_error_msg();
+            }
+        }
+
+        if ($errors !== []) {
+            Session::set('errors', $errors);
+            Session::set('old', $input);
             return null;
         }
 
         return [
             'name'        => $input['name'],
+            'plan_type'   => $input['plan_type'],
             'description' => $input['description'] ?? '',
-            'amount'      => (float) $input['amount'],
+            'amount'      => 0,
+            'parameters'  => $params !== '' ? $params : '{}',
+            'benefits'    => $input['benefits'] ?? '',
             'status'      => $input['status'],
         ];
     }

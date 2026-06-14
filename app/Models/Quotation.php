@@ -20,9 +20,22 @@ final class Quotation extends Model
     protected string $table = 'quotations';
 
     protected array $fillable = [
-        'quotation_number', 'customer_id', 'created_by', 'subtotal', 'discount',
-        'tax', 'total', 'notes', 'terms', 'expiry_date', 'status', 'verification_token',
+        'quotation_number', 'customer_id', 'created_by', 'plan_id', 'plan_type',
+        'inputs', 'projection', 'subtotal', 'discount', 'tax', 'total', 'notes',
+        'terms', 'expiry_date', 'status', 'verification_token',
     ];
+
+    /**
+     * Decode the stored projection JSON for a quotation row.
+     *
+     * @param array<string,mixed> $quotation
+     * @return array<string,mixed>
+     */
+    public static function projection(array $quotation): array
+    {
+        $decoded = json_decode((string) ($quotation['projection'] ?? ''), true);
+        return is_array($decoded) ? $decoded : [];
+    }
 
     /**
      * Build a SQL scope fragment + params for the given user.

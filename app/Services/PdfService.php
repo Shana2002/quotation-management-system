@@ -9,109 +9,122 @@ use TCPDF;
 /**
  * PdfService
  *
- * Wraps TCPDF (vendored in libs/tcpdf) to produce professional A4 documents:
- *  - generateQuotation(): a full quotation with logo, breakdown, terms,
- *    signature block and a NATIVE QR code (no GD required) linking to the
- *    public verification page.
+ * Wraps TCPDF (vendored in libs/tcpdf) to produce OXIAURA documents:
+ *  - generateQuotation(): a personal letter-style quotation — branded
+ *    letterhead, date, addressee, plan-specific projection table, benefits,
+ *    signatory block, and a small NATIVE QR code (no GD) linking to the public
+ *    verification page.
  *  - generateReport(): a generic tabular report used by ReportService.
+ *
+ * The letter is layout-driven by the stored projection (intro + headers + rows
+ * + summary + benefits), so a single renderer serves every plan type.
  */
 final class PdfService
 {
+    /** Brand colours (OXIAURA green / blue). */
+    private const GREEN = '#1f7a34';
+    private const BLUE  = '#1d4ed8';
+
     public function __construct()
     {
-        // Vendored TCPDF (installed via scripts/install_tcpdf.ps1).
         require_once dirname(__DIR__, 2) . '/libs/tcpdf/tcpdf.php';
     }
 
     /**
-     * Build a quotation PDF and return its raw bytes.
+     * Build a letter-style quotation PDF and return its raw bytes.
      *
-     * @param array<string,mixed>            $quotation  Detailed quotation row.
-     * @param array<int,array<string,mixed>> $items      Line items.
-     * @param array<string,string>           $settings   Company settings map.
-     * @param string                         $verifyUrl  Public verification URL (QR target).
+     * @param array<string,mixed>  $quotation  Detailed quotation row (incl. customer_*).
+     * @param array<string,mixed>  $projection Decoded projection JSON.
+     * @param array<string,string> $settings   Company settings map.
+     * @param string               $verifyUrl  Public verification URL (QR target).
      */
-    public function generateQuotation(array $quotation, array $items, array $settings, string $verifyUrl): string
+    public function generateQuotation(array $quotation, array $projection, array $settings, string $verifyUrl): string
     {
-        $pdf = $this->newDocument($settings, 'Quotation ' . ($quotation['quotation_number'] ?? ''));
-        $pdf->AddPage();
+        return $this->render(function () use ($quotation, $projection, $settings, $verifyUrl) {
+            $pdf = $this->newDocument($settings, 'Quotation ' . ($quotation['quotation_number'] ?? ''));
+            $pdf->AddPage();
 
-        $pdf->writeHTML($this->quotationHtml($quotation, $items, $settings), true, false, true, false, '');
+            $pdf->writeHTML($this->letterhead($settings), true, false, true, false, '');
+            $pdf->writeHTML($this->letterBody($quotation, $projection, $settings), true, false, true, false, '');
 
-        // Native QR code (2D barcode) — drawn directly, needs no GD extension.
-        $style = [
-            'border' => false,
-            'padding' => 1,
-            'fgcolor' => [0, 0, 0],
-            'bgcolor' => [255, 255, 255],
-        ];
-        $pdf->write2DBarcode($verifyUrl, 'QRCODE,M', 15, $pdf->GetY() + 4, 30, 30, $style, 'N');
-        $pdf->SetXY(48, $pdf->GetY() + 6);
-        $pdf->SetFont('helvetica', '', 7);
-        $pdf->MultiCell(120, 5, "Scan to verify this quotation online:\n" . $verifyUrl, 0, 'L');
+            // Small native QR (needs no GD) anchored near the bottom of the page.
+            $style = ['border' => false, 'padding' => 1, 'fgcolor' => [0, 0, 0], 'bgcolor' => [255, 255, 255]];
+            $pdf->write2DBarcode($verifyUrl, 'QRCODE,M', 15, 250, 24, 24, $style, 'N');
+            $pdf->SetXY(42, 254);
+            $pdf->SetFont('helvetica', '', 7);
+            $pdf->SetTextColor(100, 100, 100);
+            $pdf->MultiCell(120, 4, "Scan to verify the authenticity of this quotation:\n" . $verifyUrl, 0, 'L');
 
-        return $pdf->Output('quotation.pdf', 'S');
+            return $pdf->Output('quotation.pdf', 'S');
+        });
     }
 
     /**
      * Build a generic report PDF (title + table) and return its raw bytes.
      *
-     * @param string[]                       $headers
-     * @param array<int,array<int,string>>   $rows
-     * @param array<string,string>           $settings
-     * @param array<string,string>           $meta     Optional summary key=>value rows.
+     * @param string[]                     $headers
+     * @param array<int,array<int,string>> $rows
+     * @param array<string,string>         $settings
+     * @param array<string,string>         $meta
      */
     public function generateReport(string $title, array $headers, array $rows, array $settings, array $meta = []): string
     {
-        $pdf = $this->newDocument($settings, $title);
-        $pdf->AddPage();
-        $pdf->writeHTML($this->reportHtml($title, $headers, $rows, $settings, $meta), true, false, true, false, '');
+        return $this->render(function () use ($title, $headers, $rows, $settings, $meta) {
+            $pdf = $this->newDocument($settings, $title);
+            $pdf->AddPage();
+            $pdf->writeHTML($this->letterhead($settings), true, false, true, false, '');
+            $pdf->writeHTML($this->reportHtml($title, $headers, $rows, $meta), true, false, true, false, '');
 
-        return $pdf->Output('report.pdf', 'S');
+            return $pdf->Output('report.pdf', 'S');
+        });
+    }
+
+    /**
+     * Run a TCPDF build with warning OUTPUT suppressed and any stray echoes
+     * captured, so PHP notices emitted by TCPDF internals (a known PHP 8 issue)
+     * can never contaminate the returned binary. The PDF string itself is
+     * always returned clean.
+     *
+     * @param callable():string $build
+     */
+    private function render(callable $build): string
+    {
+        $prevLevel = error_reporting();
+        error_reporting($prevLevel & ~(E_WARNING | E_NOTICE | E_DEPRECATED));
+        ob_start();
+        try {
+            return $build();
+        } finally {
+            ob_end_clean();
+            error_reporting($prevLevel);
+        }
     }
 
     /* ------------------------------------------------------------------ */
 
     /**
-     * Create and configure a base TCPDF document with company header/footer.
+     * Create a base TCPDF document. We render our own letterhead in the body
+     * (no TCPDF header/footer) for full control over the OXIAURA layout.
      *
      * @param array<string,string> $settings
      */
     private function newDocument(array $settings, string $docTitle): TCPDF
     {
         $pdf = new TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
-
-        $pdf->SetCreator('QMS');
-        $pdf->SetAuthor($settings['company_name'] ?? 'QMS');
+        $pdf->SetCreator('OXIAURA QMS');
+        $pdf->SetAuthor($settings['company_name'] ?? 'OXIAURA');
         $pdf->SetTitle($docTitle);
-
-        $pdf->SetMargins(15, 38, 15);
-        $pdf->SetHeaderMargin(8);
-        $pdf->SetFooterMargin(12);
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(false);
+        $pdf->SetMargins(15, 15, 15);
         $pdf->SetAutoPageBreak(true, 18);
-
-        // Company header (logo + name) rendered on every page.
-        $logoFile = $this->logoPath($settings);
-        $companyName = $settings['company_name'] ?? 'Company';
-        $pdf->setHeaderData(
-            $logoFile ?? '',
-            $logoFile ? 24 : 0,
-            $companyName,
-            $this->companyContactLine($settings),
-            [37, 99, 235],
-            [37, 99, 235]
-        );
-        $pdf->setHeaderFont(['helvetica', 'B', 13]);
-        $pdf->setFooterFont(['helvetica', '', 8]);
-        $pdf->setFooterData([100, 100, 100], [200, 200, 200]);
-
         $pdf->SetFont('helvetica', '', 10);
 
         return $pdf;
     }
 
     /**
-     * Resolve an absolute path to the uploaded logo, if it exists.
+     * Resolve an absolute path to the uploaded logo, if present.
      *
      * @param array<string,string> $settings
      */
@@ -127,141 +140,137 @@ final class PdfService
     }
 
     /**
+     * Branded letterhead: logo/company on the left, contacts on the right.
+     *
      * @param array<string,string> $settings
      */
-    private function companyContactLine(array $settings): string
+    private function letterhead(array $settings): string
     {
-        $parts = array_filter([
-            $settings['company_address'] ?? '',
-            $settings['company_phone'] ?? '',
-            $settings['company_email'] ?? '',
-        ]);
+        $esc  = static fn ($v) => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8');
+        $logo = $this->logoPath($settings);
 
-        return implode("\n", $parts);
+        $logoCell = $logo !== null
+            ? '<img src="' . $esc($logo) . '" height="48">&nbsp;'
+            : '';
+
+        $name = $esc($settings['company_name'] ?? 'OXIAURA Plantation (PVT) LTD.');
+        $reg  = !empty($settings['company_reg_no']) ? '<br/><span style="color:#888;font-size:8px">(' . $esc($settings['company_reg_no']) . ')</span>' : '';
+
+        $contacts = [];
+        foreach (['company_phone' => 'Tel', 'company_email' => 'Email', 'company_website' => 'Web', 'company_address' => 'Address'] as $key => $label) {
+            if (!empty($settings[$key])) {
+                $contacts[] = $esc($settings[$key]);
+            }
+        }
+        $contactHtml = implode('<br/>', $contacts);
+
+        return '
+        <table cellpadding="4"><tr>
+            <td width="55%">' . $logoCell
+                . '<span style="color:' . self::GREEN . ';font-size:16px;font-weight:bold;">' . $name . '</span>' . $reg . '</td>
+            <td width="45%" align="right" style="font-size:8.5px;color:#333">' . $contactHtml . '</td>
+        </tr></table>
+        <div style="border-bottom:2px solid ' . self::GREEN . ';">&nbsp;</div><br/>';
     }
 
     /**
-     * Build the quotation body as HTML for TCPDF::writeHTML.
+     * The letter body: date, addressee, salutation, title, intro, projection
+     * table, benefits and signatory block.
      *
-     * @param array<string,mixed>            $q
-     * @param array<int,array<string,mixed>> $items
-     * @param array<string,string>           $settings
+     * @param array<string,mixed>  $q
+     * @param array<string,mixed>  $projection
+     * @param array<string,string> $settings
      */
-    private function quotationHtml(array $q, array $items, array $settings): string
+    private function letterBody(array $q, array $projection, array $settings): string
     {
-        $currency = $settings['currency_symbol'] ?? 'Rs.';
-        $fmt = static fn ($n) => $currency . ' ' . number_format((float) $n, 2);
         $esc = static fn ($v) => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8');
 
-        // Line item rows.
-        $rowsHtml = '';
-        $i = 1;
-        foreach ($items as $item) {
-            $rowsHtml .= '<tr>'
-                . '<td align="center">' . $i++ . '</td>'
-                . '<td>' . $esc($item['description']) . '</td>'
-                . '<td align="center">' . number_format((float) $item['quantity'], 2) . '</td>'
-                . '<td align="right">' . $fmt($item['unit_price']) . '</td>'
-                . '<td align="right">' . $fmt($item['line_total']) . '</td>'
-                . '</tr>';
+        $date     = date('jS \o\f F Y', strtotime((string) ($q['created_at'] ?? 'now')));
+        $customer = $esc($q['customer_name']);
+        $city     = $esc($this->lastAddressLine((string) ($q['customer_address'] ?? '')));
+        $first    = $esc($this->firstName((string) ($q['customer_name'] ?? 'Customer')));
+        $title    = $esc($projection['letter_title'] ?? 'Investment Proposal');
+        $intro    = $esc($projection['intro'] ?? '');
+
+        // Projection table.
+        $headers = $projection['headers'] ?? [];
+        $rows    = $projection['rows'] ?? [];
+        $head = '';
+        foreach ($headers as $h) {
+            $head .= '<th style="background-color:' . self::GREEN . ';color:#fff;font-weight:bold;">' . $esc($h) . '</th>';
+        }
+        $body = '';
+        foreach ($rows as $row) {
+            $body .= '<tr>';
+            foreach ($row as $cell) {
+                $body .= '<td align="center">' . $esc($cell) . '</td>';
+            }
+            $body .= '</tr>';
         }
 
-        $statusLabel = ucfirst((string) ($q['status'] ?? 'draft'));
-        $terms = $q['terms'] ?? ($settings['default_terms'] ?? '');
-
-        $notesBlock = '';
-        if (!empty($q['notes'])) {
-            $notesBlock = '<p><strong>Notes:</strong><br>' . nl2br($esc($q['notes'])) . '</p>';
+        // Benefits (one bullet per line). Rendered as <br/>-separated lines —
+        // TCPDF's <ul>/<li> handling emits warnings on PHP 8, so we avoid it.
+        $benefits = trim((string) ($projection['benefits'] ?? ''));
+        $benefitsHtml = '';
+        if ($benefits !== '') {
+            $lines = preg_split('/\r\n|\r|\n/', $benefits) ?: [];
+            $items = [];
+            foreach ($lines as $line) {
+                // Strip any leading bullet/dash/whitespace (Unicode-aware) and
+                // re-add a clean HTML-entity bullet — TCPDF's core font renders
+                // a literal "•" as mojibake, but the entity maps correctly.
+                $clean = trim((string) preg_replace('/^[\x{2022}\x{00B7}\-\*\s]+/u', '', trim($line)));
+                if ($clean !== '') {
+                    $items[] = '&#8226; ' . $esc($clean);
+                }
+            }
+            $benefitsHtml = '<br/><strong>Benefits &amp; Conditions</strong>'
+                . '<p style="font-size:9px;color:#444;line-height:1.5">' . implode('<br/>', $items) . '</p>';
         }
+
+        $signName  = $esc($settings['signatory_name'] ?? ($q['created_by_name'] ?? ''));
+        $signTitle = $esc($settings['signatory_title'] ?? '');
+        $expiry    = !empty($q['expiry_date']) ? date('jS \o\f F Y', strtotime((string) $q['expiry_date'])) : null;
 
         return '
         <style>
-            h1 { color: #2563eb; font-size: 18px; }
-            .meta td { font-size: 10px; padding: 2px 0; }
-            .box { border: 1px solid #e2e8f0; }
-            table.items { border-collapse: collapse; }
-            table.items th { background-color: #2563eb; color: #ffffff; font-size: 10px; padding: 6px; }
-            table.items td { border-bottom: 1px solid #e2e8f0; font-size: 10px; padding: 6px; }
-            .totals td { font-size: 10px; padding: 4px 6px; }
-            .grand { background-color: #f1f5f9; font-weight: bold; font-size: 12px; }
-            .muted { color: #64748b; font-size: 9px; }
+            table.proj { border-collapse: collapse; }
+            table.proj th, table.proj td { border: 1px solid #cbd5e1; font-size: 10px; padding: 7px; }
         </style>
 
-        <h1>QUOTATION</h1>
-        <table class="meta" cellpadding="0">
-            <tr>
-                <td width="55%"><strong>Bill To:</strong><br>'
-                    . '<strong>' . $esc($q['customer_name']) . '</strong><br>'
-                    . nl2br($esc($q['customer_address'] ?? '')) . '<br>'
-                    . 'NIC: ' . $esc($q['customer_nic'] ?? '—') . '<br>'
-                    . 'Tel: ' . $esc($q['customer_telephone'] ?? '—') . '<br>'
-                    . ($q['customer_email'] ? 'Email: ' . $esc($q['customer_email']) : '') .
-                '</td>
-                <td width="45%" align="right">
-                    <strong>No:</strong> ' . $esc($q['quotation_number']) . '<br>
-                    <strong>Date:</strong> ' . $esc(date('d M Y', strtotime((string) ($q['created_at'] ?? 'now')))) . '<br>
-                    <strong>Valid Until:</strong> ' . $esc($q['expiry_date'] ? date('d M Y', strtotime((string) $q['expiry_date'])) : '—') . '<br>
-                    <strong>Status:</strong> ' . $esc($statusLabel) . '<br>
-                    <strong>Prepared By:</strong> ' . $esc($q['created_by_name'] ?? '—') . '
-                </td>
-            </tr>
-        </table>
-        <br>
-
-        <table class="items" cellpadding="6" width="100%" border="0">
-            <thead>
-                <tr>
-                    <th width="7%">#</th>
-                    <th width="48%">Description</th>
-                    <th width="12%">Qty</th>
-                    <th width="16%">Unit Price</th>
-                    <th width="17%">Amount</th>
-                </tr>
-            </thead>
-            <tbody>' . $rowsHtml . '</tbody>
-        </table>
-        <br>
-
-        <table width="100%" cellpadding="0"><tr>
-            <td width="55%" valign="top">' . $notesBlock . '</td>
-            <td width="45%">
-                <table class="totals" width="100%" cellpadding="4">
-                    <tr><td>Subtotal:</td><td align="right">' . $fmt($q['subtotal']) . '</td></tr>
-                    <tr><td>Discount:</td><td align="right">- ' . $fmt($q['discount']) . '</td></tr>
-                    <tr><td>Tax:</td><td align="right">' . $fmt($q['tax']) . '</td></tr>
-                    <tr class="grand"><td>TOTAL:</td><td align="right">' . $fmt($q['total']) . '</td></tr>
-                </table>
-            </td>
+        <table cellpadding="2"><tr>
+            <td width="60%" style="font-size:10px"><strong>' . $date . '</strong><br/>'
+                . $customer . ($city !== '' ? '<br/>' . $city : '') . '.</td>
+            <td width="40%" align="right" style="font-size:9px;color:#555">Ref: ' . $esc($q['quotation_number']) . '</td>
         </tr></table>
-        <br>
-
-        <p class="muted"><strong>Terms &amp; Conditions</strong><br>' . nl2br($esc($terms)) . '</p>
-        <br><br><br>
-
-        <table width="100%"><tr>
-            <td width="50%">_____________________________<br><span class="muted">Authorized Signature</span></td>
-            <td width="50%" align="right">_____________________________<br><span class="muted">Customer Acceptance</span></td>
-        </tr></table>
-        ';
+        <br/>
+        <p style="font-size:10px">Dear ' . $first . ',</p>
+        <p align="center" style="font-size:12px"><strong><u>' . $title . '</u></strong></p>
+        <p style="font-size:10px">Dear Valuable Customer, ' . $intro . '</p>
+        <br/>
+        <table class="proj" width="100%" cellpadding="7"><thead><tr>' . $head . '</tr></thead><tbody>' . $body . '</tbody></table>
+        ' . $benefitsHtml . '
+        ' . ($expiry ? '<p style="font-size:9px;color:#666">This quotation is valid until ' . $expiry . '.</p>' : '') . '
+        <br/><br/>
+        <p style="font-size:10px">Thank You,<br/><br/><strong>' . $signName . '</strong>'
+            . ($signTitle !== '' ? '<br/>' . $signTitle . '.' : '') . '</p>';
     }
 
     /**
-     * Build a generic report table as HTML.
+     * Generic report table HTML (used after the letterhead).
      *
      * @param string[]                     $headers
      * @param array<int,array<int,string>> $rows
-     * @param array<string,string>         $settings
      * @param array<string,string>         $meta
      */
-    private function reportHtml(string $title, array $headers, array $rows, array $settings, array $meta): string
+    private function reportHtml(string $title, array $headers, array $rows, array $meta): string
     {
         $esc = static fn ($v) => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8');
 
         $head = '';
         foreach ($headers as $h) {
-            $head .= '<th>' . $esc($h) . '</th>';
+            $head .= '<th style="background-color:' . self::BLUE . ';color:#fff">' . $esc($h) . '</th>';
         }
-
         $body = '';
         foreach ($rows as $row) {
             $body .= '<tr>';
@@ -279,20 +288,34 @@ final class PdfService
             $metaHtml .= '<tr><td><strong>' . $esc($k) . ':</strong></td><td>' . $esc($v) . '</td></tr>';
         }
         if ($metaHtml !== '') {
-            $metaHtml = '<table cellpadding="2" style="font-size:10px">' . $metaHtml . '</table><br>';
+            $metaHtml = '<table cellpadding="2" style="font-size:10px">' . $metaHtml . '</table><br/>';
         }
 
         return '
         <style>
-            h1 { color: #2563eb; font-size: 16px; }
             table.rep { border-collapse: collapse; }
-            table.rep th { background-color: #2563eb; color: #fff; font-size: 9px; padding: 5px; }
-            table.rep td { border-bottom: 1px solid #e2e8f0; font-size: 9px; padding: 5px; }
+            table.rep th, table.rep td { border-bottom: 1px solid #e2e8f0; font-size: 9px; padding: 5px; }
         </style>
-        <h1>' . $esc($title) . '</h1>
+        <h2 style="color:' . self::BLUE . ';font-size:15px">' . $esc($title) . '</h2>
         <p style="font-size:9px;color:#64748b">Generated on ' . date('d M Y H:i') . '</p>
         ' . $metaHtml . '
-        <table class="rep" width="100%" cellpadding="5"><thead><tr>' . $head . '</tr></thead><tbody>' . $body . '</tbody></table>
-        ';
+        <table class="rep" width="100%" cellpadding="5"><thead><tr>' . $head . '</tr></thead><tbody>' . $body . '</tbody></table>';
+    }
+
+    /** Extract a likely given name (strip a leading honorific). */
+    private function firstName(string $fullName): string
+    {
+        $clean = preg_replace('/^\s*(Mr|Mrs|Ms|Miss|Dr|Rev)\.?\s+/i', '', trim($fullName)) ?? $fullName;
+        $parts = preg_split('/\s+/', trim($clean)) ?: [];
+
+        return $parts[0] ?? $fullName;
+    }
+
+    /** The last non-empty line of an address (typically the city). */
+    private function lastAddressLine(string $address): string
+    {
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n|,/', $address) ?: [])));
+
+        return $lines === [] ? '' : end($lines);
     }
 }

@@ -4,9 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Quotation Management System (QMS): an enterprise app in **core PHP 8.2, no framework, no Composer**.
-MVC-inspired, PDO/MySQL, Bootstrap 5, vendored TCPDF for PDFs with native QR codes. See `README.md`,
+Quotation Management System (QMS) for **OXIAURA Plantation (PVT) LTD**, an Agarwood-investment
+company: an enterprise app in **core PHP 8.2, no framework, no Composer**. MVC-inspired, PDO/MySQL,
+Bootstrap 5, vendored TCPDF for letter-style PDFs with native QR codes. See `README.md`,
 `INSTALL.md`, `DEPLOY.md` for setup/deploy details.
+
+Quotations are **plan-type investment proposals**, not generic line-item invoices. Each of the six
+products (Royal Plus, Guaranteed Plus, Monthly Wealth, Supreme Plus, Golden Crop, Plant Selling) has
+its own inputs, calculation, and projection table, rendered as a personal letter PDF.
 
 ## Environment reality (Windows / XAMPP)
 
@@ -78,15 +83,29 @@ shell) and `layouts/auth` (login + public verify). Always escape output with `e(
 written via `put`/`putMany` (upsert). Company branding, default terms, tax rate and quotation prefix
 live here and feed the PDF and the quotation builder.
 
-**Quotation creation** (`QuotationController::store`): line items arrive as `items[i][...]`; the
-controller **recomputes all money server-side** (never trusts posted totals), wraps the quotation +
-items insert in a transaction, and generates the number via `QuotationNumberService`
-(`{PREFIX}-{YYYYMM}-{NNNN}`, sequence derived from the max existing number that month) and a random
-`verification_token`.
+**Plan types** (`app/PlanTypes/`): the heart of the domain. Each product implements
+`PlanTypeInterface` (most extend `AbstractPlanType`; Royal/Guaranteed extend `InterestPlanType`) and
+is registered in `PlanTypeRegistry`. A type declares `inputFields($params)` (drives the dynamic
+builder form), `defaultParameters()` + `defaultBenefits()` (seed/admin-editable), `validate()`, and
+`compute($inputs, $params)`. `compute()` returns a **render-agnostic projection**
+(`intro`, `headers[]`, `rows[][]` of pre-formatted strings, `summary{}`, `headline_amount`) so the
+show view and the PDF render any plan type without knowing its specifics. To add a product: add a
+class + register it. Rates/prices live in the plan's editable `parameters` JSON, **not** in code.
 
-**PDF + verification** (`PdfService`): `require_once libs/tcpdf/tcpdf.php` in the constructor, builds
-the document with `writeHTML` + a native QR via `write2DBarcode`. The QR encodes `/verify/{token}`,
-a public (no-auth) page served by `VerifyController` that confirms authenticity.
+**Quotation creation** (`QuotationController::store`): captures only the inputs the chosen plan
+type declares, runs `$type->validate()`, then `$type->compute()` with the plan's `parameters`. The
+projection is **enriched** with `plan_label`/`letter_title`/`benefits` (a snapshot, so editing a
+plan later never changes historical quotes) and stored as JSON on `quotations.projection`;
+`quotations.inputs` keeps the raw inputs. `total`/`subtotal` hold the projection's `headline_amount`
+(capital) for dashboards/reports; discount/tax are unused (0). Number via `QuotationNumberService`
+(`{PREFIX}-{YYYYMM}-{NNNN}`) + a random `verification_token`. `plans` carry `plan_type` + JSON
+`parameters` + `benefits`; decode with `Plan::parameters()` / `Quotation::projection()`.
+
+**PDF + verification** (`PdfService`): `require_once libs/tcpdf/tcpdf.php` in the constructor.
+`generateQuotation()` renders an OXIAURA **letter** (branded letterhead, date, addressee, salutation,
+plan title, intro, the projection table, benefits, signatory block) + a native QR via
+`write2DBarcode` (no GD). The QR encodes `/verify/{token}`, a public (no-auth) page served by
+`VerifyController`. Branding/signatory come from `settings` (company_*, signatory_name/title).
 
 ## Cross-cutting conventions & gotchas
 
@@ -95,6 +114,15 @@ a public (no-auth) page served by `VerifyController` that confirms authenticity.
   200 and silently downgrades 403/404/419/500. Same pattern in `App`, `Controller`, `RoleMiddleware`.
 - **`config/config.php` is loaded twice** (App bootstrap + the `config()` helper). Any function it
   declares (e.g. `env()`) must be wrapped in `if (!function_exists(...))` or it fatals on redeclare.
+- **TCPDF emits PHP warnings on PHP 8** (e.g. undefined `startcolumn`/`startx` in table-border code)
+  that corrupt the binary stream under `display_errors`. `PdfService::render()` wraps every build in
+  an output buffer + reduced `error_reporting` so notices can't contaminate the returned PDF. Also
+  **avoid `<ul>/<li>`** in `writeHTML` (broken on PHP 8) — render bullets as `<br/>`-joined lines,
+  and emit `•` as the entity `&#8226;` (TCPDF's core font renders a literal `•` as mojibake).
+- **Seeding JSON columns in `database.sql`:** MySQL interprets backslash escapes in string literals,
+  so a `\n` inside JSON becomes a real newline → invalid JSON. Write `\\n` in the SQL, and keep the
+  `SET NAMES utf8mb4;` at the top of the file so multibyte chars (the `•` in benefits) import intact.
+  The app stores runtime JSON via PDO prepared statements, which has neither problem.
 - **CSRF:** every state-changing form must include `<?= csrf_field() ?>`, and the controller action
   must call `$this->verifyCsrf()` first (renders 419 on failure).
 - **Validation:** server-side via `Core/Validator` with pipe rules (`required|email|unique:table,col[,ignoreId]`);
