@@ -1,0 +1,36 @@
+# =====================================================================
+#  QMS front-controller rewrite + hardening (Apache)
+# =====================================================================
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Base is the directory this file lives in. When served from a subfolder
+    # (e.g. http://localhost/quotation/public) Apache resolves it correctly.
+    RewriteBase /
+
+    # Do not rewrite requests to existing files or directories
+    # (real assets in /assets, etc. are served directly).
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Route everything else through the front controller, passing the path
+    # in the 'url' query var (works even when PATH_INFO is unavailable).
+    RewriteRule ^(.*)$ index.php?url=$1 [QSA,L]
+</IfModule>
+
+# Security headers (App also sets these; harmless if duplicated).
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Disable directory listings.
+Options -Indexes
+
+# Block access to dotfiles.
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>

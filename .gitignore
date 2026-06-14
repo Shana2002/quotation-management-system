@@ -1,0 +1,19 @@
+# Dependencies (vendored, large)
+/libs/tcpdf/
+
+# Local configuration with real credentials
+/config/database.local.php
+
+# Generated / runtime files
+/storage/pdf/*
+!/storage/pdf/.gitkeep
+/public/assets/uploads/*
+!/public/assets/uploads/.gitkeep
+!/public/assets/uploads/.htaccess
+
+# OS / editor
+Thumbs.db
+.DS_Store
+*.log
+.idea/
+.vscode/

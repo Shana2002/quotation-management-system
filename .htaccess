@@ -1,0 +1,15 @@
+# Root .htaccess — fallback for shared hosting where the document root could
+# not be pointed directly at /public. Forwards all traffic into public/.
+#
+# PREFERRED on HestiaCP: set the domain's document root to the public/ folder
+# and this file is not needed.
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^$ public/ [L]
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# Deny access to sensitive directories if they ever sit under the web root.
+RedirectMatch 403 ^/(app|config|database|libs|routes|storage|scripts)/.*$
