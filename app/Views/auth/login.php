@@ -46,12 +46,5 @@ $messages = Flash::pull();
                 <i class="bi bi-box-arrow-in-right"></i> Sign In
             </button>
         </form>
-
-        <div class="mt-4 small text-muted border-top pt-3">
-            <div class="fw-semibold mb-1">Demo accounts</div>
-            <div>Admin: <code>admin@qms.local</code> / <code>Admin@123</code></div>
-            <div>Manager: <code>manager@qms.local</code> / <code>Manager@123</code></div>
-            <div>Executive: <code>executive@qms.local</code> / <code>Executive@123</code></div>
-        </div>
     </div>
 </div>

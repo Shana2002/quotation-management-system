@@ -88,7 +88,7 @@ abstract class InterestPlanType extends AbstractPlanType
         $yearLabel = $year . ' Year' . ($year > 1 ? 's' : '');
 
         if ($method === 'monthly') {
-            $monthlyProfit = $investment * ((float) $rates['monthly_rate'] / 100);
+            $monthlyProfit = $investment * ((float) $rates['monthly_rate']/12 / 100);
             $totalProfit   = $monthlyProfit * 12 * $year;
             $maturity      = $investment + $totalProfit;
 
