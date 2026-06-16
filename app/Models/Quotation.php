@@ -80,7 +80,7 @@ final class Quotation extends Model
     {
         [$scope, $params] = $this->scopeForUser($user);
 
-        $sql = "SELECT q.*, c.name AS customer_name, u.name AS created_by_name
+        $sql = "SELECT q.*, c.name AS customer_name, u.name AS created_by_name, u.phone AS created_by_phone,u.position AS created_by_position
                 FROM quotations q
                 JOIN customers c ON c.id = q.customer_id
                 LEFT JOIN users u ON u.id = q.created_by
@@ -101,7 +101,7 @@ final class Quotation extends Model
     {
         $sql = "SELECT q.*, c.name AS customer_name, c.address AS customer_address,
                        c.telephone AS customer_telephone, c.nic AS customer_nic,
-                       c.email AS customer_email, u.name AS created_by_name
+                       c.email AS customer_email, u.name AS created_by_name , u.phone AS created_by_phone,u.position AS created_by_position
                 FROM quotations q
                 JOIN customers c ON c.id = q.customer_id
                 LEFT JOIN users u ON u.id = q.created_by

@@ -14,7 +14,7 @@ final class User extends Model
     protected string $table = 'users';
 
     protected array $fillable = [
-        'role_id', 'name', 'email', 'password_hash', 'phone',
+        'role_id', 'name', 'email', 'password_hash', 'phone', 'position',
         'status', 'manager_id', 'created_by', 'last_login_at',
     ];
 

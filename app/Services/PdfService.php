@@ -228,8 +228,9 @@ final class PdfService
                 . '<p style="font-size:9px;color:#444;line-height:1.5">' . implode('<br/>', $items) . '</p>';
         }
 
-        $signName  = $esc($settings['signatory_name'] ?? ($q['created_by_name'] ?? ''));
-        $signTitle = $esc($settings['signatory_title'] ?? '');
+        $signName  = $esc($q['created_by_name'] ?? '');
+        $signTitle = $esc($q['created_by_position'] ?? '');
+        $contactPerson = $esc($q['created_by_phone'] ?? '');
         $expiry    = !empty($q['expiry_date']) ? date('jS \o\f F Y', strtotime((string) $q['expiry_date'])) : null;
 
         return '
@@ -253,7 +254,8 @@ final class PdfService
         ' . ($expiry ? '<p style="font-size:9px;color:#666">This quotation is valid until ' . $expiry . '.</p>' : '') . '
         <br/><br/>
         <p style="font-size:10px">Thank You,<br/><br/><strong>' . $signName . '</strong>'
-            . ($signTitle !== '' ? '<br/>' . $signTitle . '.' : '') . '</p>';
+            . ($signTitle !== '' ? '<br/>' . $signTitle . '.' : '') . '</p>'
+            . ($contactPerson !== '' ? '<p style="font-size:9px;color:#666">Contact: ' . $contactPerson . '</p>' : '');
     }
 
     /**

@@ -31,8 +31,13 @@ $isManagerActor = Auth::isManager();
             </div>
 
             <div class="col-md-6">
-                <label class="form-label">Phone</label>
-                <input type="text" name="phone" class="form-control" value="<?= e(old('phone', $user['phone'] ?? '')) ?>">
+                <label class="form-label">Phone <span class="text-danger">*</span></label>
+                <input type="text" name="phone" class="form-control" required value="<?= e(old('phone', $user['phone'] ?? '')) ?>">
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Position <span class="text-danger">*</span></label>
+                <input type="text" name="position" class="form-control" required value="<?= e(old('position', $user['position'] ?? '')) ?>">
             </div>
 
             <div class="col-md-6">
