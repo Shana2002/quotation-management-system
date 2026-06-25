@@ -232,11 +232,8 @@ INSERT INTO `roles` (`id`, `name`, `description`) VALUES
 
 -- Users. Password hashes generated with PHP password_hash() (bcrypt).
 --   Admin@123 / Manager@123 / Executive@123
-INSERT INTO `users` (`id`, `role_id`, `name`, `email`, `password_hash`, `phone`, `status`, `manager_id`, `created_by`) VALUES
+INSERT INTO `users` (`id`, `role_id`, `name`, `email`, `password_hash`, `phone`, `position`,`status`, `manager_id`, `created_by`) VALUES
     (1, 1, 'System Administrator', 'admin@qms.local',     '$2y$10$5TcMmovSpmGIYC4WhvQkcO5pvFSfG5EVd2VbS/BoPAV8IbMIVecgu', '0112345678','Admin Manager', 'active', NULL, NULL),
-    (2, 2, 'Mahesh Perera',        'manager@qms.local',   '$2y$10$5hBY1JN.NS7olYZKUjcYf.shPXxA9OSgAB8HS7VxqG/Z.q8yvlH2C', '0712345678','Zonal Manager', 'active', NULL, 1),
-    (3, 3, 'Nimal Fernando',       'executive@qms.local', '$2y$10$rKRBRhQ1irmnUY9E9y9k3upcWaHfDaPwypBxIS9ZrZL0yqj//ATJ.', '0763334444','Project Executive', 'active', 2,    1),
-    (4, 3, 'Kasun Silva',          'kasun@qms.local',     '$2y$10$rKRBRhQ1irmnUY9E9y9k3upcWaHfDaPwypBxIS9ZrZL0yqj//ATJ.', '0775556666','Project Consultant', 'active', 2,    1);
 
 -- OXIAURA Agarwood plantation products. `parameters` holds the admin-editable
 -- rates/prices as JSON; `benefits` holds the conditions printed on the PDF.

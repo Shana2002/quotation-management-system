@@ -150,11 +150,11 @@ final class PdfService
         $logo = $this->logoPath($settings);
 
         $logoCell = $logo !== null
-            ? '<img src="' . $esc($logo) . '" height="48">&nbsp;<br>'
+            ? '<img src="' . $esc($logo) . '" height="48">'
             : '';
 
-        $name = $esc($settings['company_name'] ?? 'OXIAURA Plantation (PVT) LTD.');
-        $reg  = !empty($settings['company_reg_no']) ? '<br/><span style="color:#888;font-size:8px">(' . $esc($settings['company_reg_no']) . ')</span>' : '';
+        // $name = $esc($settings['company_name'] ?? 'OXIAURA Plantation (PVT) LTD.');
+        // $reg  = !empty($settings['company_reg_no']) ? '<br/><span style="color:#888;font-size:8px">(' . $esc($settings['company_reg_no']) . ')</span>' : '';
 
         $contacts = [];
         foreach (['company_phone' => 'Tel', 'company_email' => 'Email', 'company_website' => 'Web', 'company_address' => 'Address'] as $key => $label) {
@@ -162,14 +162,17 @@ final class PdfService
                 $contacts[] = $esc($settings[$key]);
             }
         }
-        $contactHtml = implode('<br/>', $contacts);
+        $contactHtml = implode('<br/>', array_filter($contacts));
 
         return '
-        <table cellpadding="4"><tr>
-            <td width="55%">' . $logoCell
-                . '<span style="color:' . self::GREEN . ';font-size:16px;font-weight:bold;">' . $name . '</span>' . $reg . '</td>
-            <td width="45%" align="right" style="font-size:8.5px;color:#333">' . $contactHtml . '</td>
-        </tr></table>
+        <table cellpadding="4">
+            <tr>
+                <td width="55%">' . $logoCell
+                    . '<span style="color:' . self::GREEN . ';font-size:16px;font-weight:bold;">' . $name . '</span>' . $reg . '</td>
+                <td width="45%" align="right" 
+    style="font-size:8.5px;color:#333;vertical-align:top;padding-bottom:0">' . $contactHtml . '</td>
+            </tr>
+        </table>
         <div style="border-bottom:2px solid ' . self::GREEN . ';">&nbsp;</div><br/>';
     }
 
