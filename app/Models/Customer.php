@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Core\Model;
+use App\Core\Auth;
+
 
 /**
  * Customer model.
@@ -26,10 +28,21 @@ final class Customer extends Model
     {
         $sql = "SELECT c.*, u.name AS created_by_name
                 FROM customers c
-                LEFT JOIN users u ON u.id = c.created_by
-                ORDER BY c.name ASC";
+                LEFT JOIN users u ON u.id = c.created_by";
 
-        return $this->db->query($sql)->fetchAll();
+        $params = [];
+
+        if (Auth::isExecutive() || Auth::isManager()) {
+            $sql .= " WHERE c.created_by = :userId";
+            $params['userId'] = Auth::id();
+        }
+
+        $sql .= " ORDER BY c.name ASC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->fetchAll();
     }
 
     /**

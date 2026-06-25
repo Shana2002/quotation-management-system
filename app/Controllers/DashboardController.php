@@ -26,8 +26,13 @@ final class DashboardController extends Controller
         $trend      = $quotations->monthlyTrend($user, 6);
         $recent     = $quotations->recentForUser($user, 6);
 
+        $conditions = [];
+
+        if (Auth::isExecutive() || Auth::isManager()) {
+            $conditions['created_by'] = Auth::id();
+        }
         // Secondary counts (role-aware where relevant).
-        $customerCount = (new Customer())->count();
+        $customerCount = (new Customer())->count($conditions);
         $planCount     = (new Plan())->count(['status' => 'active']);
 
         $teamCount = 0;

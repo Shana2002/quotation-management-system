@@ -150,7 +150,7 @@ final class PdfService
         $logo = $this->logoPath($settings);
 
         $logoCell = $logo !== null
-            ? '<img src="' . $esc($logo) . '" height="48">&nbsp;'
+            ? '<img src="' . $esc($logo) . '" height="48">&nbsp;<br>'
             : '';
 
         $name = $esc($settings['company_name'] ?? 'OXIAURA Plantation (PVT) LTD.');
