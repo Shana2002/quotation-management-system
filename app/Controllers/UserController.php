@@ -154,7 +154,7 @@ final class UserController extends Controller
      */
     private function validateUser(?int $ignoreId): ?array
     {
-        $input = $this->request->only(['name', 'email', 'phone', 'password', 'role', 'manager_id', 'status']);
+        $input = $this->request->only(['name', 'email', 'phone', 'password', 'role','position', 'manager_id', 'status']);
 
         // Managers can only create executives assigned to themselves.
         if (Auth::isManager()) {
