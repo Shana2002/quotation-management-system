@@ -192,6 +192,7 @@ final class UserController extends Controller
             'name'    => $input['name'],
             'email'   => $input['email'],
             'phone'   => $input['phone'] ?? '',
+            'position' => $input['position'] ?? '',
             'role_id' => $roleId,
             'status'  => in_array($input['status'] ?? 'active', ['active', 'inactive'], true) ? $input['status'] : 'active',
             // Only executives get a manager; null for others.
