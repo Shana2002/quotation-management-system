@@ -62,6 +62,54 @@ abstract class InterestPlanType extends AbstractPlanType
         return ['years' => $years];
     }
 
+    public function defaultBenefits(): string
+    {
+        return "• Guaranteed harvest income for the full tenure.\n"
+            . "• Ownership share of an Agarwood plantation land.\n"
+            . "• Full capital returned together with the total maturity value.";
+    }
+
+    public function defaultSummary(): string
+    {
+        return "Based on the above quotation, the customer invests \${amount} under the Oxiaura \${plan_name} plan for a term of \${term_label}.\n"
+            . "The agreed return is \${payout_amount}, payable \${payout_frequency}.\n"
+            . "Total scheduled returns over the \${term_label} term: \${total_return}.";
+    }
+
+    public function defaultTerms(): string
+    {
+        return "The investment term is \${term_months} months from the agreed commencement date.\n"
+            . "The return of \${payout_amount} shall be payable according to the agreed payment schedule.\n"
+            . "The investment amount is \${amount}.\n"
+            . "The investment agreement and applicable company terms shall govern the investment.\n"
+            . "Any applicable taxes, statutory deductions, fees, or other charges shall be handled according to the applicable agreement and regulations.\n"
+            . "This quotation is subject to formal acceptance and execution of the relevant investment agreement and required customer documentation.";
+    }
+
+    protected function tokenLabels(): array
+    {
+        return [
+            'plan_name'        => 'Plan name, e.g. "Royal Plus"',
+            'term_label'       => 'Tenure, e.g. "2 Years"',
+            'term_years'       => 'Tenure in years, e.g. "2"',
+            'term_months'      => 'Tenure in months, e.g. "24"',
+            'amount'           => 'Investment amount with currency',
+            'amount_number'    => 'Investment amount, digits only',
+            'method'           => 'Repayment method key (monthly/annual)',
+            'method_label'     => 'Repayment method, e.g. "Monthly Profit Payable"',
+            'payout_label'     => 'Payout row label ("Monthly Return"/"Annual Return")',
+            'payout_amount'    => 'Amount paid each period',
+            'payout_frequency' => 'Payout wording, e.g. "monthly for 12 months"',
+            'payments_count'   => 'Number of payments in the term',
+            'monthly_return'   => 'Monthly return amount',
+            'annual_return'    => 'One year of returns',
+            'total_return'     => 'Total returns over the whole term',
+            'total_maturity'   => 'Capital + total returns',
+            'rate_monthly'     => 'Monthly rate as a percentage',
+            'rate_annual'      => 'Annual rate as a percentage',
+        ];
+    }
+
     public function validate(array $inputs): array
     {
         $errors = [];
@@ -85,33 +133,106 @@ abstract class InterestPlanType extends AbstractPlanType
 
         $rates = $params['years'][$year] ?? $params['years'][(string) $year] ?? ['monthly_rate' => 2.0, 'annual_rate' => 24.0];
 
+        $monthlyRate = (float) ($rates['monthly_rate'] ?? 2.0);
+        $annualRate  = (float) ($rates['annual_rate'] ?? 24.0);
+
         $yearLabel = $year . ' Year' . ($year > 1 ? 's' : '');
+        $months    = $year * 12;
+
+        // `monthly_rate` is a percentage of capital PER MONTH (annual_rate is
+        // the per-year equivalent) — neither is divided by 12.
+        $monthlyProfit = $investment * ($monthlyRate / 100);
+        $annualProfit  = $investment * ($annualRate / 100);
 
         if ($method === 'monthly') {
-            $monthlyProfit = $investment * ((float) $rates['monthly_rate']/12 / 100);
-            $totalProfit   = $monthlyProfit * 12 * $year;
-            $maturity      = $investment + $totalProfit;
-
-            $harvestCell = $this->fmt($monthlyProfit) . ' x 12' . ($year > 1 ? " x {$year}" : '');
-            $headers = ['Year', 'Investment', 'Monthly harvest Profit', 'Total maturity value'];
+            $totalProfit = $monthlyProfit * $months;
+            $maturity    = $investment + $totalProfit;
         } else {
-            $annualProfit = $investment * ((float) $rates['annual_rate'] / 100);
-            $totalProfit  = $annualProfit * $year;
-            $maturity     = $investment + $totalProfit;
-
-            $harvestCell = $this->fmt($annualProfit) . ($year > 1 ? " x {$year}" : '');
-            $headers = ['Year', 'Investment', 'Annual harvest Profit', 'Total maturity value'];
+            $totalProfit = $annualProfit * $year;
+            $maturity    = $investment + $totalProfit;
         }
 
+        $perPeriod    = $method === 'monthly' ? $monthlyProfit : $annualProfit;
+        $methodLabel  = $method === 'monthly' ? 'Monthly Profit Payable' : 'Annual Profit Payable';
+        $payoutLabel  = $method === 'monthly' ? 'Monthly Return' : 'Annual Return';
+        $payments     = $method === 'monthly' ? $months : $year;
+        $frequency    = $method === 'monthly'
+            ? 'monthly for ' . $months . ' months'
+            : 'annually';
+
+        $tokens = [
+            'plan_name'        => $this->label(),
+            'term_label'       => $yearLabel,
+            'term_years'       => (string) $year,
+            'term_months'      => (string) $months,
+            'amount'           => $this->fmt($investment),
+            'amount_number'    => number_format($investment, 2, '.', ''),
+            'method'           => $method,
+            'method_label'     => $methodLabel,
+            'payout_label'     => $payoutLabel,
+            'payout_amount'    => $this->fmt($perPeriod),
+            'payout_frequency' => $frequency,
+            'payments_count'   => (string) $payments,
+            'monthly_return'   => $this->fmt($monthlyProfit),
+            'annual_return'    => $this->fmt($annualProfit),
+            'total_return'     => $this->fmt($totalProfit),
+            'total_maturity'   => $this->fmt($maturity),
+            'rate_monthly'     => number_format($monthlyRate, 2) . '%',
+            'rate_annual'      => number_format($annualRate, 2) . '%',
+        ];
+
         return [
-            'intro'   => $this->label() . ' plan with harvest income will be made in the following manner.',
-            'headers' => $headers,
-            'rows'    => [[$yearLabel, $this->fmt($investment), $harvestCell, $this->fmt($maturity)]],
+            'intro'   => 'At the outset we thank you so much for giving us an opportunity to providing a price '
+                . 'quotation for Oxiaura ' . $this->label() . ' Plan. Please pay your attention to following rates '
+                . 'for the proposed service/ product of Oxiaura Plantation (Pvt) Ltd.',
+            'details' => $this->details([
+                [
+                    'title' => 'Investment Plan',
+                    'rows'  => [
+                        'Investment Plan'  => $this->label(),
+                        'Investment Term'  => $yearLabel,
+                        'Total Investment' => $this->fmt($investment),
+                    ],
+                ],
+                [
+                    'title' => 'Payment Plan',
+                    'rows'  => [
+                        'Payment Method'             => $methodLabel,
+                        'Monthly Return'             => $method === 'monthly' ? $this->fmt($monthlyProfit) : '',
+                        'Number of Monthly Payments' => $method === 'monthly' ? (string) $months : '',
+                        'Annual Return'              => $method === 'annual' ? $this->fmt($annualProfit) : '',
+                        'Total Annual Returns'       => $this->fmt($method === 'monthly' ? $monthlyProfit * 12 : $annualProfit),
+                        'Total Returns Over Term'    => $year > 1 ? $this->fmt($totalProfit) : '',
+                    ],
+                ],
+                [
+                    'title' => 'Investment Principal',
+                    'rows'  => [
+                        'Investment Principal' => $this->fmt($investment),
+                        'Total Maturity Value' => $this->fmt($maturity),
+                    ],
+                ],
+            ]),
+            'headers' => [
+                'Year',
+                'Investment',
+                $method === 'monthly' ? 'Monthly harvest Profit' : 'Annual harvest Profit',
+                'Total maturity value',
+            ],
+            'rows' => [[
+                $yearLabel,
+                $this->fmt($investment),
+                $method === 'monthly'
+                    ? $this->fmt($monthlyProfit) . ' x ' . $months
+                    : $this->fmt($annualProfit) . ($year > 1 ? " x {$year}" : ''),
+                $this->fmt($maturity),
+            ]],
             'summary' => [
-                'Investment'          => $this->fmt($investment),
+                'Investment'           => $this->fmt($investment),
                 'Total harvest profit' => $this->fmt($totalProfit),
                 'Total maturity value' => $this->fmt($maturity),
             ],
+            'tokens'          => $tokens,
             'headline_amount' => $investment,
         ];
     }

@@ -68,6 +68,36 @@ final class PlantSelling extends AbstractPlanType
             . "• Optional planting and maintenance guidance available.";
     }
 
+    public function defaultSummary(): string
+    {
+        return "Based on the above quotation, the customer purchases \${quantity} \${crop} plants at \${unit_price} per plant, for a total of \${amount}.\n"
+            . "The projected harvest value of the plants at maturity is \${projected_harvest}.";
+    }
+
+    public function defaultTerms(): string
+    {
+        return "The total purchase price is \${amount} for \${quantity} \${crop} plants at \${unit_price} per plant.\n"
+            . "Plants supplied are nursery-raised and of the agreed variety.\n"
+            . "The projected harvest value of \${projected_harvest} is an estimate and not a guarantee.\n"
+            . "Planting and maintenance after hand-over are the customer's responsibility unless separately agreed.\n"
+            . "Any applicable taxes, statutory deductions, fees, or other charges shall be handled according to the applicable agreement and regulations.\n"
+            . "This quotation is subject to formal acceptance and execution of the relevant purchase agreement.";
+    }
+
+    protected function tokenLabels(): array
+    {
+        return [
+            'plan_name'                 => 'Plan name',
+            'crop'                      => 'Selected crop',
+            'quantity'                  => 'Number of plants',
+            'unit_price'                => 'Price per plant',
+            'amount'                    => 'Total cost with currency',
+            'amount_number'             => 'Total cost, digits only',
+            'projected_harvest'         => 'Projected harvest value',
+            'harvest_value_per_plant'   => 'Harvest value per plant',
+        ];
+    }
+
     public function validate(array $inputs): array
     {
         $errors = [];
@@ -87,11 +117,41 @@ final class PlantSelling extends AbstractPlanType
         $crop     = $this->findCrop($params['crops'] ?? [], $cropName);
 
         $unitPrice      = (float) ($crop['price_per_plant'] ?? 0);
+        $harvestPerPlant = (float) ($crop['harvest_value_per_plant'] ?? 0);
         $total          = $qty * $unitPrice;
-        $projectedValue = $qty * (float) ($crop['harvest_value_per_plant'] ?? 0);
+        $projectedValue = $qty * $harvestPerPlant;
+
+        $tokens = [
+            'plan_name'               => $this->label(),
+            'crop'                    => $cropName,
+            'quantity'                => number_format($qty),
+            'unit_price'              => $this->fmt($unitPrice),
+            'amount'                  => $this->fmt($total),
+            'amount_number'           => number_format($total, 2, '.', ''),
+            'projected_harvest'       => $this->fmt($projectedValue),
+            'harvest_value_per_plant' => $this->fmt($harvestPerPlant),
+        ];
 
         return [
             'intro'   => 'Plant Selling — direct purchase of ' . $cropName . ' plants is illustrated below.',
+            'details' => $this->details([
+                [
+                    'title' => 'Order Details',
+                    'rows'  => [
+                        'Investment Plan'  => $this->label(),
+                        'Crop'             => $cropName,
+                        'Number of Plants' => number_format($qty),
+                        'Unit Price'       => $this->fmt($unitPrice),
+                    ],
+                ],
+                [
+                    'title' => 'Investment',
+                    'rows'  => [
+                        'Total Cost'              => $this->fmt($total),
+                        'Projected Harvest Value' => $this->fmt($projectedValue),
+                    ],
+                ],
+            ]),
             'headers' => ['Crop', 'No. of Plants', 'Unit Price', 'Total', 'Projected Harvest Value'],
             'rows'    => [[
                 $cropName,
@@ -104,6 +164,7 @@ final class PlantSelling extends AbstractPlanType
                 'Total cost'              => $this->fmt($total),
                 'Projected harvest value' => $this->fmt($projectedValue),
             ],
+            'tokens'          => $tokens,
             'headline_amount' => $total,
         ];
     }

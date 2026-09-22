@@ -13,12 +13,15 @@ if (is_string($paramsRaw) && $paramsRaw !== '') {
     }
 }
 
-// Build a JS map of type => {note, defaults} for the live helper.
+// Build a JS map of type => {note, defaults, tokens, summary, terms} for the live helpers.
 $typeMeta = [];
 foreach ($types as $key => $type) {
     $typeMeta[$key] = [
         'note'     => $type->formulaNote(),
         'defaults' => json_encode($type->defaultParameters(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+        'tokens'   => $type->availableTokens($type->defaultParameters()),
+        'summary'  => $type->defaultSummary(),
+        'terms'    => $type->defaultTerms(),
     ];
 }
 $selectedType = old('plan_type', $plan['plan_type'] ?? array_key_first($types));
@@ -80,6 +83,27 @@ $selectedType = old('plan_type', $plan['plan_type'] ?? array_key_first($types));
             </div>
 
             <div class="col-12">
+                <hr class="mt-2">
+                <div class="alert alert-info py-2 mb-3 small">
+                    <strong>Placeholders for this plan type</strong> — click to insert into the Investment Summary.
+                    <div id="token-list" class="mt-1"></div>
+                </div>
+
+                <label class="form-label d-flex justify-content-between align-items-center">
+                    <span>Investment Summary</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="load-letter-defaults">Load default summary &amp; terms</button>
+                </label>
+                <textarea name="summary_template" id="summary-template" class="form-control" rows="4"><?= e(old('summary_template', $plan['summary_template'] ?? '')) ?></textarea>
+                <div class="form-text">One bullet per line. Values are filled in per quotation from the placeholders above.</div>
+            </div>
+
+            <div class="col-12">
+                <label class="form-label">Terms &amp; Conditions</label>
+                <textarea name="terms_template" id="terms-template" class="form-control" rows="7"><?= e(old('terms_template', $plan['terms_template'] ?? '')) ?></textarea>
+                <div class="form-text">One clause per line — numbered automatically on the letter.</div>
+            </div>
+
+            <div class="col-12">
                 <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> <?= $editing ? 'Update' : 'Create' ?> Plan</button>
             </div>
         </form>
@@ -92,6 +116,35 @@ $selectedType = old('plan_type', $plan['plan_type'] ?? array_key_first($types));
     const sel = document.getElementById('plan-type');
     const note = document.getElementById('formula-note');
     const params = document.getElementById('parameters');
+    const summary = document.getElementById('summary-template');
+    const terms = document.getElementById('terms-template');
+    const tokenList = document.getElementById('token-list');
+
+    // Render the placeholder names this plan type can fill, as click-to-insert chips.
+    function showTokens() {
+        const m = META[sel.value] || {};
+        const tokens = m.tokens || {};
+        tokenList.innerHTML = '';
+
+        Object.keys(tokens).forEach(function (name) {
+            const code = '${' + name + '}';
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'btn btn-sm btn-outline-primary py-0 px-1 me-1 mb-1 font-monospace';
+            chip.style.fontSize = '.75rem';
+            chip.textContent = code;
+            chip.title = tokens[name];
+            chip.addEventListener('click', function () {
+                summary.value += (summary.value && !summary.value.endsWith('\n') ? '\n' : '') + code;
+                summary.focus();
+            });
+            tokenList.appendChild(chip);
+        });
+
+        if (!Object.keys(tokens).length) {
+            tokenList.innerHTML = '<span class="text-muted">—</span>';
+        }
+    }
 
     function showNote() {
         const m = META[sel.value];
@@ -103,9 +156,22 @@ $selectedType = old('plan_type', $plan['plan_type'] ?? array_key_first($types));
             params.value = m.defaults;
         }
     });
-    sel.addEventListener('change', showNote);
+    document.getElementById('load-letter-defaults').addEventListener('click', function () {
+        const m = META[sel.value];
+        if (m && confirm('Replace the Investment Summary and Terms & Conditions with this type’s defaults?')) {
+            summary.value = m.summary || '';
+            terms.value = m.terms || '';
+        }
+    });
+    sel.addEventListener('change', function () {
+        showNote();
+        showTokens();
+    });
     showNote();
+    showTokens();
     // Pre-fill defaults when creating a brand-new plan with an empty editor.
     if (!params.value.trim()) { params.value = (META[sel.value] || {}).defaults || ''; }
+    if (!summary.value.trim()) { summary.value = (META[sel.value] || {}).summary || ''; }
+    if (!terms.value.trim()) { terms.value = (META[sel.value] || {}).terms || ''; }
 })();
 </script>

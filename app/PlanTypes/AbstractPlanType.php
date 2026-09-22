@@ -41,4 +41,98 @@ abstract class AbstractPlanType implements PlanTypeInterface
     {
         return [];
     }
+
+    /** No summary template by default; types that ship a letter override this. */
+    public function defaultSummary(): string
+    {
+        return '';
+    }
+
+    /** No terms template by default; types that ship a letter override this. */
+    public function defaultTerms(): string
+    {
+        return '';
+    }
+
+    /**
+     * Discover this type's `${token}` set by running a representative compute().
+     *
+     * Deriving the list from compute() itself (rather than hand-maintaining a
+     * parallel array) guarantees the plan-edit reference panel can never list a
+     * token compute() no longer emits, or miss one it started emitting.
+     *
+     * @param array<string,mixed> $params
+     * @return array<string,string> token name => description
+     */
+    public function availableTokens(array $params): array
+    {
+        $inputs = [];
+        foreach ($this->inputFields($params) as $field) {
+            $inputs[$field['name']] = $this->sampleInput($field);
+        }
+
+        $tokens = $this->compute($inputs, $params)['tokens'] ?? [];
+        $labels = $this->tokenLabels();
+
+        $out = [];
+        foreach (array_keys($tokens) as $name) {
+            $out[$name] = $labels[$name] ?? ucfirst(str_replace('_', ' ', $name));
+        }
+
+        return $out;
+    }
+
+    /**
+     * Human wording for this type's tokens, keyed by token name. Types override
+     * to replace the generic "Term label" fallback with something clearer.
+     *
+     * @return array<string,string>
+     */
+    protected function tokenLabels(): array
+    {
+        return [];
+    }
+
+    /**
+     * Assemble the letter's "Investment Plan Details" table from ordered
+     * sections of label => value rows. Rows whose value is an empty string are
+     * dropped, so a type can list every row it might emit and let the data
+     * decide which appear (e.g. monthly-only rows on an annual payout).
+     *
+     * @param array<int,array{title?:string,rows:array<string,string>}> $sections
+     * @return array{title:string,headers:array<int,string>,sections:array<int,array{title:string,rows:array<int,array{label:string,value:string}>}>}
+     */
+    protected function details(array $sections, string $title = 'Investment Plan Details'): array
+    {
+        $clean = [];
+        foreach ($sections as $section) {
+            $rows = [];
+            foreach ($section['rows'] ?? [] as $label => $value) {
+                $value = (string) $value;
+                if ($value === '') {
+                    continue;
+                }
+                $rows[] = ['label' => (string) $label, 'value' => $value];
+            }
+            if ($rows !== []) {
+                $clean[] = ['title' => (string) ($section['title'] ?? ''), 'rows' => $rows];
+            }
+        }
+
+        return [
+            'title'    => $title,
+            'headers'  => ['Description', 'Details'],
+            'sections' => $clean,
+        ];
+    }
+
+    /** A representative input value, used only for token discovery. */
+    protected function sampleInput(array $field): mixed
+    {
+        return match ($field['type'] ?? 'text') {
+            'number' => 100000,
+            'select' => (string) (array_key_first($field['options'] ?? []) ?? ''),
+            default  => 'Sample',
+        };
+    }
 }

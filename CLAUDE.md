@@ -86,26 +86,54 @@ live here and feed the PDF and the quotation builder.
 **Plan types** (`app/PlanTypes/`): the heart of the domain. Each product implements
 `PlanTypeInterface` (most extend `AbstractPlanType`; Royal/Guaranteed extend `InterestPlanType`) and
 is registered in `PlanTypeRegistry`. A type declares `inputFields($params)` (drives the dynamic
-builder form), `defaultParameters()` + `defaultBenefits()` (seed/admin-editable), `validate()`, and
-`compute($inputs, $params)`. `compute()` returns a **render-agnostic projection**
-(`intro`, `headers[]`, `rows[][]` of pre-formatted strings, `summary{}`, `headline_amount`) so the
-show view and the PDF render any plan type without knowing its specifics. To add a product: add a
-class + register it. Rates/prices live in the plan's editable `parameters` JSON, **not** in code.
+builder form), `defaultParameters()` + `defaultBenefits()` + `defaultSummary()` + `defaultTerms()`
+(seed/admin-editable), `validate()`, and `compute($inputs, $params)`. `compute()` returns a
+**render-agnostic projection** so the show view and the PDF render any plan type without knowing its
+specifics:
+
+- `intro` — the letter's opening paragraph.
+- `details` — the sectioned "Investment Plan Details" table: `{title, headers[], sections[]}` where
+  each section is `{title, rows[]}` and each row is `{label, value}`. Built via
+  `AbstractPlanType::details()`, which **drops any row whose value is `''`** — so a type lists every
+  row it might emit and lets the data decide which appear (e.g. monthly-only rows on an annual plan).
+- `tokens` — a flat map of pre-formatted strings (`amount`, `monthly_return`, `term_label`, …) used to
+  fill `${token}` placeholders in the plan's letter templates.
+- `headers[]` / `rows[][]` — the older flat table, retained as the projection's on-screen fallback.
+- `summary{}`, `headline_amount`.
+
+`availableTokens($params)` (implemented once in `AbstractPlanType`) derives the token list by running
+a representative `compute()`, so the plan-edit reference panel can never drift from what `compute()`
+actually emits. To add a product: add a class + register it. Rates/prices live in the plan's editable
+`parameters` JSON, **not** in code.
+
+**Letter templates** (`plans.summary_template` / `plans.terms_template`): the "Investment Summary" and
+"Terms & Conditions" prose, authored per plan in plan edit mode as `${token}` templates. The plan form
+renders a click-to-insert chip for every token the selected type can fill. `Core/Placeholder` resolves
+them — `resolve()` (unknown tokens left visible), `lines()` (resolves and strips leading
+bullets/numbering so the renderer re-adds its own), `referenced()` / `unknown()` (used by
+`PlanController::validatePlan` to **reject** a save whose template references a token the type cannot
+supply, rather than printing `${amunt}` on a customer's letter).
 
 **Quotation creation** (`QuotationController::store`): captures only the inputs the chosen plan
 type declares, runs `$type->validate()`, then `$type->compute()` with the plan's `parameters`. The
-projection is **enriched** with `plan_label`/`letter_title`/`benefits` (a snapshot, so editing a
-plan later never changes historical quotes) and stored as JSON on `quotations.projection`;
-`quotations.inputs` keeps the raw inputs. `total`/`subtotal` hold the projection's `headline_amount`
-(capital) for dashboards/reports; discount/tax are unused (0). Number via `QuotationNumberService`
-(`{PREFIX}-{YYYYMM}-{NNNN}`) + a random `verification_token`. `plans` carry `plan_type` + JSON
-`parameters` + `benefits`; decode with `Plan::parameters()` / `Quotation::projection()`.
+projection is **enriched** with `plan_label`/`letter_title`/`benefits` **and the resolved
+`summary_lines[]` / `terms_lines[]`** (a snapshot, so editing a plan later never changes historical
+quotes — the *resolved text* is stored, not the template) and stored as JSON on
+`quotations.projection`; `quotations.inputs` keeps the raw inputs. `total`/`subtotal` hold the
+projection's `headline_amount` (capital) for dashboards/reports; discount/tax are unused (0). Number
+via `QuotationNumberService` (`{PREFIX}-{YYYYMM}-{NNNN}`) + a random `verification_token`. `plans`
+carry `plan_type` + JSON `parameters` + `benefits` + the two templates; decode with
+`Plan::parameters()` / `Quotation::projection()`.
 
 **PDF + verification** (`PdfService`): `require_once libs/tcpdf/tcpdf.php` in the constructor.
-`generateQuotation()` renders an OXIAURA **letter** (branded letterhead, date, addressee, salutation,
-plan title, intro, the projection table, benefits, signatory block) + a native QR via
-`write2DBarcode` (no GD). The QR encodes `/verify/{token}`, a public (no-auth) page served by
-`VerifyController`. Branding/signatory come from `settings` (company_*, signatory_name/title).
+`generateQuotation()` renders an OXIAURA **letter** (branded letterhead, date, addressee, "Dear Sir/
+Madam", the intro paragraph, the sectioned details table, **Investment Summary**, **Terms &
+Conditions**, the optional Benefits block, signatory) + a native QR via `write2DBarcode` (no GD),
+placed just after the body rather than at a fixed `y` so a long letter can't have it land on the text.
+The QR encodes `/verify/{token}`, a public (no-auth) page served by `VerifyController`.
+Branding/signatory come from `settings` (company_*, signatory_name/title). Quotations issued before
+the sectioned layout still render — `letterBody()` falls back to the flat `headers`/`rows` table when
+`projection.details` is absent.
 
 ## Cross-cutting conventions & gotchas
 
@@ -122,7 +150,14 @@ plan title, intro, the projection table, benefits, signatory block) + a native Q
 - **Seeding JSON columns in `database.sql`:** MySQL interprets backslash escapes in string literals,
   so a `\n` inside JSON becomes a real newline → invalid JSON. Write `\\n` in the SQL, and keep the
   `SET NAMES utf8mb4;` at the top of the file so multibyte chars (the `•` in benefits) import intact.
-  The app stores runtime JSON via PDO prepared statements, which has neither problem.
+  The app stores runtime JSON via PDO prepared statements, which has neither problem. The letter
+  templates are **TEXT, not JSON** — there a `\n` is the correct spelling for a line break.
+- **Schema changes ship as migrations in `database/migrations/`**, run once per database by hand
+  (`mysql … < file.sql`); `database/database.sql` is the from-scratch seed and must carry the same
+  change. Split a change into a `_schema.sql` (the `ALTER`) and a `_backfill.sql` (data) because
+  MySQL 8 has no `ADD COLUMN IF NOT EXISTS` and stops at the first error — a combined file would skip
+  its own backfill on a re-run. Write backfills guarded (`WHERE col IS NULL OR col = ''`) so they are
+  safe to re-run, and keep `SET NAMES utf8mb4;` at the top.
 - **CSRF:** every state-changing form must include `<?= csrf_field() ?>`, and the controller action
   must call `$this->verifyCsrf()` first (renders 419 on failure).
 - **Validation:** server-side via `Core/Validator` with pipe rules (`required|email|unique:table,col[,ignoreId]`);
@@ -136,3 +171,13 @@ plan title, intro, the projection table, benefits, signatory block) + a native Q
   jsdelivr/cdnjs, so new external script/style origins must be added there too. Dark/light theme is
   Bootstrap `data-bs-theme` toggled in `public/assets/js/app.js` and persisted in localStorage.
 ```
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

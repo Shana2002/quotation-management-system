@@ -47,10 +47,19 @@ final class PdfService
             $pdf->writeHTML($this->letterhead($settings), true, false, true, false, '');
             $pdf->writeHTML($this->letterBody($quotation, $projection, $settings), true, false, true, false, '');
 
-            // Small native QR (needs no GD) anchored near the bottom of the page.
+            // Small native QR (needs no GD), placed just after the letter body
+            // rather than at a fixed y — the letter now runs to a details table
+            // plus summary and terms, so an absolute position would land on top
+            // of the text. Falls to a fresh page if there isn't room.
+            $y = $pdf->GetY() + 4;
+            if ($y > 240) {
+                $pdf->AddPage();
+                $y = 20;
+            }
+
             $style = ['border' => false, 'padding' => 1, 'fgcolor' => [0, 0, 0], 'bgcolor' => [255, 255, 255]];
-            $pdf->write2DBarcode($verifyUrl, 'QRCODE,M', 15, 250, 24, 24, $style, 'N');
-            $pdf->SetXY(42, 254);
+            $pdf->write2DBarcode($verifyUrl, 'QRCODE,M', 15, $y, 24, 24, $style, 'N');
+            $pdf->SetXY(42, $y + 4);
             $pdf->SetFont('helvetica', '', 7);
             $pdf->SetTextColor(100, 100, 100);
             $pdf->MultiCell(120, 4, "Scan to verify the authenticity of this quotation:\n" . $verifyUrl, 0, 'L');
@@ -153,23 +162,25 @@ final class PdfService
             ? '<img src="' . $esc($logo) . '" height="48">'
             : '';
 
-        // $name = $esc($settings['company_name'] ?? 'OXIAURA Plantation (PVT) LTD.');
-        // $reg  = !empty($settings['company_reg_no']) ? '<br/><span style="color:#888;font-size:8px">(' . $esc($settings['company_reg_no']) . ')</span>' : '';
+        $name = $esc($settings['company_name'] ?? 'OXIAURA Plantation (PVT) LTD.');
+        $reg  = !empty($settings['company_reg_no'])
+            ? '<br/><span style="color:#888;font-size:8px">(' . $esc($settings['company_reg_no']) . ')</span>'
+            : '';
 
         $contacts = [];
-        foreach (['company_phone' => 'Tel', 'company_email' => 'Email', 'company_website' => 'Web', 'company_address' => 'Address'] as $key => $label) {
+        foreach (['company_phone', 'company_email', 'company_website', 'company_address'] as $key) {
             if (!empty($settings[$key])) {
                 $contacts[] = $esc($settings[$key]);
             }
         }
-        $contactHtml = implode('<br/>', array_filter($contacts));
+        $contactHtml = implode('<br/>', $contacts);
 
         return '
         <table cellpadding="4">
             <tr>
                 <td width="55%">' . $logoCell
                     . '<span style="color:' . self::GREEN . ';font-size:16px;font-weight:bold;">' . $name . '</span>' . $reg . '</td>
-                <td width="45%" align="right" 
+                <td width="45%" align="right"
     style="font-size:8.5px;color:#333;vertical-align:top;padding-bottom:0">' . $contactHtml . '</td>
             </tr>
         </table>
@@ -177,8 +188,13 @@ final class PdfService
     }
 
     /**
-     * The letter body: date, addressee, salutation, title, intro, projection
-     * table, benefits and signatory block.
+     * The letter body: date, addressee, salutation, opening paragraph, the
+     * "Investment Plan Details" table, then the plan's Investment Summary and
+     * Terms & Conditions, and finally the signatory block.
+     *
+     * Every section below the opening paragraph is driven entirely by the
+     * stored projection, so this one renderer serves all six plan types — and
+     * any plan type added later — without knowing their specifics.
      *
      * @param array<string,mixed>  $q
      * @param array<string,mixed>  $projection
@@ -188,22 +204,110 @@ final class PdfService
     {
         $esc = static fn ($v) => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8');
 
-        $date     = date('jS \o\f F Y', strtotime((string) ($q['created_at'] ?? 'now')));
-        $customer = $esc($q['customer_name']);
-        $city     = $esc($this->lastAddressLine((string) ($q['customer_address'] ?? '')));
-        $first    = $esc($this->firstName((string) ($q['customer_name'] ?? 'Customer')));
-        $title    = $esc($projection['letter_title'] ?? 'Investment Proposal');
+        $date     = date('d-M-y', strtotime((string) ($q['created_at'] ?? 'now')));
+        $customer = $esc($q['customer_name'] ?? '');
+        $address  = $esc(trim((string) ($q['customer_address'] ?? '')));
         $intro    = $esc($projection['intro'] ?? '');
 
-        // Projection table.
+        // Prefer the structured sectioned table; fall back to the flat
+        // headers/rows table for quotations issued before this layout existed.
+        $details = $projection['details'] ?? null;
+        $table   = is_array($details) && !empty($details['sections'])
+            ? $this->detailsTable($details)
+            : $this->legacyTable($projection);
+
+        // Investment Summary / Terms & Conditions were resolved from the plan's
+        // `${token}` templates when the quotation was created.
+        $summaryLines = (array) ($projection['summary_lines'] ?? []);
+        $termsLines   = (array) ($projection['terms_lines'] ?? []);
+
+        $summaryHtml = $this->listFromLines($summaryLines, false);
+        $termsHtml   = $this->listFromLines($termsLines, true);
+
+        $signName  = $esc($q['created_by_name'] ?? '');
+        $signTitle = $esc($q['created_by_position'] ?? '');
+        $contactPerson = $esc($q['created_by_phone'] ?? '');
+        $expiry    = !empty($q['expiry_date']) ? date('jS \o\f F Y', strtotime((string) $q['expiry_date'])) : null;
+
+        $benefitsHtml = $this->benefitsBlock((string) ($projection['benefits'] ?? ''), $esc);
+
+        return '
+        <style>
+            table.proj { border-collapse: collapse; }
+            table.proj th, table.proj td { border: 1px solid #cbd5e1; font-size: 10px; padding: 7px; }
+            .sect-h { font-size: 10.5px; color: ' . self::GREEN . '; font-weight: bold; }
+        </style>
+
+        <p style="font-size:10px">' . $date . '<br/>' . $customer
+            . ($address !== '' ? '<br/>' . nl2br($address) : '') . '</p>
+        <p style="font-size:10px">Dear Sir/ Madam</p>
+        <p style="font-size:10px">' . $intro . '</p>
+        ' . $table . '
+        ' . ($summaryHtml !== '' ? '<p class="sect-h">Investment Summary</p>' . $summaryHtml : '') . '
+        ' . ($termsHtml !== '' ? '<p class="sect-h">Terms &amp; Conditions</p>' . $termsHtml : '') . '
+        ' . $benefitsHtml . '
+        ' . ($expiry ? '<p style="font-size:9px;color:#666">This quotation is valid until ' . $expiry . '.</p>' : '') . '
+        <br/>
+        <p style="font-size:10px">Thank you,<br/><br/><strong>' . $signName . '</strong>'
+            . ($signTitle !== '' ? '<br/>' . $signTitle : '') . '</p>'
+            . ($contactPerson !== '' ? '<p style="font-size:9px;color:#666">Contact: ' . $contactPerson . '</p>' : '');
+    }
+
+    /**
+     * Render the structured "Investment Plan Details" table: a titled list of
+     * sections, each holding label/value rows. Empty rows were already dropped
+     * by AbstractPlanType::details().
+     *
+     * @param array<string,mixed> $details
+     */
+    private function detailsTable(array $details): string
+    {
+        $esc = static fn ($v) => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8');
+
+        $head = '';
+        foreach (($details['headers'] ?? ['Description', 'Details']) as $h) {
+            $head .= '<th style="background-color:' . self::GREEN . ';color:#fff;font-weight:bold;">' . $esc($h) . '</th>';
+        }
+
+        $body = '';
+        foreach (($details['sections'] ?? []) as $section) {
+            $title = trim((string) ($section['title'] ?? ''));
+            if ($title !== '') {
+                $body .= '<tr><td colspan="2" style="background-color:#eef7ee;color:' . self::GREEN . ';font-weight:bold;">'
+                    . $esc($title) . '</td></tr>';
+            }
+            foreach (($section['rows'] ?? []) as $row) {
+                $body .= '<tr><td>' . $esc($row['label'] ?? '') . '</td><td>' . $esc($row['value'] ?? '') . '</td></tr>';
+            }
+        }
+
+        return '<p class="sect-h">' . $esc($details['title'] ?? 'Investment Plan Details') . '</p>'
+            . '<table class="proj" width="100%" cellpadding="7"><thead><tr>' . $head . '</tr></thead><tbody>'
+            . $body . '</tbody></table>';
+    }
+
+    /**
+     * Flat headers/rows table — the pre-existing layout, kept so quotations
+     * issued before the sectioned details table still render correctly.
+     *
+     * @param array<string,mixed> $projection
+     */
+    private function legacyTable(array $projection): string
+    {
+        $esc = static fn ($v) => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8');
+
         $headers = $projection['headers'] ?? [];
-        $rows    = $projection['rows'] ?? [];
+        if ($headers === [] && empty($projection['rows'])) {
+            return '';
+        }
+
         $head = '';
         foreach ($headers as $h) {
             $head .= '<th style="background-color:' . self::GREEN . ';color:#fff;font-weight:bold;">' . $esc($h) . '</th>';
         }
+
         $body = '';
-        foreach ($rows as $row) {
+        foreach (($projection['rows'] ?? []) as $row) {
             $body .= '<tr>';
             foreach ($row as $cell) {
                 $body .= '<td align="center">' . $esc($cell) . '</td>';
@@ -211,54 +315,67 @@ final class PdfService
             $body .= '</tr>';
         }
 
-        // Benefits (one bullet per line). Rendered as <br/>-separated lines —
-        // TCPDF's <ul>/<li> handling emits warnings on PHP 8, so we avoid it.
-        $benefits = trim((string) ($projection['benefits'] ?? ''));
-        $benefitsHtml = '';
-        if ($benefits !== '') {
-            $lines = preg_split('/\r\n|\r|\n/', $benefits) ?: [];
-            $items = [];
-            foreach ($lines as $line) {
-                // Strip any leading bullet/dash/whitespace (Unicode-aware) and
-                // re-add a clean HTML-entity bullet — TCPDF's core font renders
-                // a literal "•" as mojibake, but the entity maps correctly.
-                $clean = trim((string) preg_replace('/^[\x{2022}\x{00B7}\-\*\s]+/u', '', trim($line)));
-                if ($clean !== '') {
-                    $items[] = '&#8226; ' . $esc($clean);
-                }
-            }
-            $benefitsHtml = '<br/><strong>Benefits &amp; Conditions</strong>'
-                . '<p style="font-size:9px;color:#444;line-height:1.5">' . implode('<br/>', $items) . '</p>';
+        return '<table class="proj" width="100%" cellpadding="7"><thead><tr>' . $head . '</tr></thead><tbody>'
+            . $body . '</tbody></table>';
+    }
+
+    /**
+     * Render pre-resolved lines as either a bulleted or numbered list.
+     *
+     * Emitted as <br/>-joined lines inside a <p>, not <ul>/<ol> or a nested
+     * table. TCPDF's list handling emits PHP 8 warnings (see class notes), and
+     * a nested table leaves the write cursor inside its last cell — which
+     * drifts every following block to the right.
+     *
+     * @param string[] $lines
+     */
+    private function listFromLines(array $lines, bool $numbered): string
+    {
+        if ($lines === []) {
+            return '';
         }
 
-        $signName  = $esc($q['created_by_name'] ?? '');
-        $signTitle = $esc($q['created_by_position'] ?? '');
-        $contactPerson = $esc($q['created_by_phone'] ?? '');
-        $expiry    = !empty($q['expiry_date']) ? date('jS \o\f F Y', strtotime((string) $q['expiry_date'])) : null;
+        $esc = static fn ($v) => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8');
 
-        return '
-        <style>
-            table.proj { border-collapse: collapse; }
-            table.proj th, table.proj td { border: 1px solid #cbd5e1; font-size: 10px; padding: 7px; }
-        </style>
+        $out = [];
+        foreach (array_values($lines) as $i => $line) {
+            $marker = $numbered ? ($i + 1) . '.&nbsp; ' : '&#8226;&nbsp; ';
+            $out[]  = $marker . $esc($line);
+        }
 
-        <table cellpadding="2"><tr>
-            <td width="60%" style="font-size:10px"><strong>' . $date . '</strong><br/>'
-                . $customer . ($city !== '' ? '<br/>' . $city : '') . '.</td>
-            <td width="40%" align="right" style="font-size:9px;color:#555">Ref: ' . $esc($q['quotation_number']) . '</td>
-        </tr></table>
-        <br/>
-        <p style="font-size:10px">Dear ' . $first . ',</p>
-        <p align="center" style="font-size:12px"><strong><u>' . $title . '</u></strong></p>
-        <p style="font-size:10px">Dear Valuable Customer, ' . $intro . '</p>
-        <br/>
-        <table class="proj" width="100%" cellpadding="7"><thead><tr>' . $head . '</tr></thead><tbody>' . $body . '</tbody></table>
-        ' . $benefitsHtml . '
-        ' . ($expiry ? '<p style="font-size:9px;color:#666">This quotation is valid until ' . $expiry . '.</p>' : '') . '
-        <br/><br/>
-        <p style="font-size:10px">Thank You,<br/><br/><strong>' . $signName . '</strong>'
-            . ($signTitle !== '' ? '<br/>' . $signTitle . '.' : '') . '</p>'
-            . ($contactPerson !== '' ? '<p style="font-size:9px;color:#666">Contact: ' . $contactPerson . '</p>' : '');
+        return '<p style="font-size:9.5px;line-height:1.5">' . implode('<br/>', $out) . '</p>';
+    }
+
+    /**
+     * The optional "Benefits & Conditions" block (one bullet per line).
+     *
+     * @param callable(mixed):string $esc
+     */
+    private function benefitsBlock(string $benefits, callable $esc): string
+    {
+        $benefits = trim($benefits);
+        if ($benefits === '') {
+            return '';
+        }
+
+        $lines = preg_split('/\r\n|\r|\n/', $benefits) ?: [];
+        $items = [];
+        foreach ($lines as $line) {
+            // Strip any leading bullet/dash/whitespace (Unicode-aware) and
+            // re-add a clean HTML-entity bullet — TCPDF's core font renders a
+            // literal "•" as mojibake, but the entity maps correctly.
+            $clean = trim((string) preg_replace('/^[\x{2022}\x{00B7}\-\*\s]+/u', '', trim($line)));
+            if ($clean !== '') {
+                $items[] = $clean;
+            }
+        }
+
+        if ($items === []) {
+            return '';
+        }
+
+        return '<p class="sect-h">Benefits &amp; Conditions</p>'
+            . $this->listFromLines($items, false);
     }
 
     /**
@@ -305,22 +422,5 @@ final class PdfService
         <p style="font-size:9px;color:#64748b">Generated on ' . date('d M Y H:i') . '</p>
         ' . $metaHtml . '
         <table class="rep" width="100%" cellpadding="5"><thead><tr>' . $head . '</tr></thead><tbody>' . $body . '</tbody></table>';
-    }
-
-    /** Extract a likely given name (strip a leading honorific). */
-    private function firstName(string $fullName): string
-    {
-        $clean = preg_replace('/^\s*(Mr|Mrs|Ms|Miss|Dr|Rev)\.?\s+/i', '', trim($fullName)) ?? $fullName;
-        $parts = preg_split('/\s+/', trim($clean)) ?: [];
-
-        return $parts[0] ?? $fullName;
-    }
-
-    /** The last non-empty line of an address (typically the city). */
-    private function lastAddressLine(string $address): string
-    {
-        $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n|,/', $address) ?: [])));
-
-        return $lines === [] ? '' : end($lines);
     }
 }

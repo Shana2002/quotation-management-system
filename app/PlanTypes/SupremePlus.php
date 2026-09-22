@@ -66,6 +66,42 @@ final class SupremePlus extends AbstractPlanType
             . "• Ideal for disciplined, long-term wealth building.";
     }
 
+    public function defaultSummary(): string
+    {
+        return "Based on the above quotation, the customer contributes \${monthly_contribution} monthly for \${contribution_months} months to complete a capital of \${amount} under the \${plan_name}.\n"
+            . "After completion the plan converts to a monthly re-payment plan of \${monthly_repay}, payable for \${repay_months} months.\n"
+            . "A maturity benefit of \${maturity_benefit} is paid at the end of the term, giving a total value of \${total_value}.";
+    }
+
+    public function defaultTerms(): string
+    {
+        return "The contribution term is \${contribution_months} months from the agreed commencement date.\n"
+            . "The monthly payment of \${monthly_contribution} shall be payable according to the agreed payment schedule.\n"
+            . "The completed capital is \${amount}.\n"
+            . "Upon completion the plan converts to a \${repay_months}-month re-payment plan with a maturity benefit of \${maturity_benefit}.\n"
+            . "Any applicable taxes, statutory deductions, fees, or other charges shall be handled according to the applicable agreement and regulations.\n"
+            . "This quotation is subject to formal acceptance and execution of the relevant investment agreement and required customer documentation.";
+    }
+
+    protected function tokenLabels(): array
+    {
+        return [
+            'plan_name'            => 'Plan name',
+            'monthly_contribution' => 'Monthly payment during the pay-in term',
+            'contribution_months'  => 'Number of pay-in months',
+            'amount'               => 'Completed capital with currency',
+            'amount_number'        => 'Completed capital, digits only',
+            'term_label'           => 'Full term, e.g. "Pay-in 50m + Repay 96m"',
+            'repay_months'         => 'Number of monthly re-payments',
+            'monthly_repay'        => 'Monthly re-payment amount',
+            'total_repaid'         => 'Sum of all re-payments',
+            'maturity_benefit'     => 'Maturity benefit paid at the end',
+            'total_value'          => 'Total value received',
+            'rate_repay'           => 'Monthly re-payment rate as a percentage',
+            'rate_maturity'        => 'Maturity benefit rate as a percentage',
+        ];
+    }
+
     public function validate(array $inputs): array
     {
         return $this->num($inputs['monthly_contribution'] ?? 0) > 0
@@ -84,9 +120,53 @@ final class SupremePlus extends AbstractPlanType
         $maturity      = $completed * ((float) ($params['maturity_benefit_rate'] ?? 25.0) / 100);
         $totalValue    = $totalRepaid + $maturity;
 
+        $termLabel = 'Pay-in ' . $payInMonths . ' months + Repay ' . $repayMonths . ' months';
+
+        $tokens = [
+            'plan_name'            => $this->label(),
+            'monthly_contribution' => $this->fmt($monthly),
+            'contribution_months'  => (string) $payInMonths,
+            'amount'               => $this->fmt($completed),
+            'amount_number'        => number_format($completed, 2, '.', ''),
+            'term_label'           => $termLabel,
+            'repay_months'         => (string) $repayMonths,
+            'monthly_repay'        => $this->fmt($monthlyRepay),
+            'total_repaid'         => $this->fmt($totalRepaid),
+            'maturity_benefit'     => $this->fmt($maturity),
+            'total_value'          => $this->fmt($totalValue),
+            'rate_repay'           => number_format((float) ($params['monthly_repay_rate'] ?? 1.5), 2) . '%',
+            'rate_maturity'        => number_format((float) ($params['maturity_benefit_rate'] ?? 25.0), 2) . '%',
+        ];
+
         return [
             'intro'   => 'Supreme Plus plan: complete your capital over ' . $payInMonths
                 . ' monthly payments, after which it converts to a Monthly Wealth plan as shown below.',
+            'details' => $this->details([
+                [
+                    'title' => 'Contribution Plan',
+                    'rows'  => [
+                        'Investment Plan'          => $this->label(),
+                        'Monthly Payment'          => $this->fmt($monthly),
+                        'Number of Monthly Payments' => (string) $payInMonths,
+                        'Completed Capital'        => $this->fmt($completed),
+                    ],
+                ],
+                [
+                    'title' => 'Payment Plan',
+                    'rows'  => [
+                        'Monthly Re-payment'         => $this->fmt($monthlyRepay),
+                        'Number of Monthly Payments' => (string) $repayMonths,
+                    ],
+                ],
+                [
+                    'title' => 'Returns',
+                    'rows'  => [
+                        'Total Re-payments' => $this->fmt($totalRepaid),
+                        'Maturity Benefit'  => $this->fmt($maturity),
+                        'Total Value'       => $this->fmt($totalValue),
+                    ],
+                ],
+            ]),
             'headers' => ['Monthly Payment', 'Completed Capital', 'Monthly Re-payment', 'Maturity Benefit', 'Total Value'],
             'rows'    => [[
                 $this->fmt($monthly) . ' x ' . $payInMonths,
@@ -101,6 +181,7 @@ final class SupremePlus extends AbstractPlanType
                 'Maturity benefit'  => $this->fmt($maturity),
                 'Total value'       => $this->fmt($totalValue),
             ],
+            'tokens'          => $tokens,
             'headline_amount' => $completed,
         ];
     }

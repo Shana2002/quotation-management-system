@@ -108,6 +108,8 @@ CREATE TABLE `plans` (
     `amount`      DECIMAL(12,2)  NOT NULL DEFAULT 0.00,
     `parameters`  LONGTEXT       DEFAULT NULL,  -- JSON: rates / prices / durations
     `benefits`    TEXT           DEFAULT NULL,  -- benefits & conditions text
+    `summary_template` TEXT      DEFAULT NULL,  -- Investment Summary letter text; ${token} placeholders
+    `terms_template`   TEXT      DEFAULT NULL,  -- Terms & Conditions letter text; ${token} placeholders
     `status`      ENUM('active','inactive') NOT NULL DEFAULT 'active',
     `created_at`  DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at`  DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -237,36 +239,52 @@ INSERT INTO `users` (`id`, `role_id`, `name`, `email`, `password_hash`, `phone`,
 
 -- OXIAURA Agarwood plantation products. `parameters` holds the admin-editable
 -- rates/prices as JSON; `benefits` holds the conditions printed on the PDF.
-INSERT INTO `plans` (`id`, `name`, `plan_type`, `description`, `amount`, `parameters`, `benefits`, `status`) VALUES
+-- `summary_template` / `terms_template` hold the letter's "Investment Summary"
+-- and "Terms & Conditions" text. Both are `${token}` templates resolved per
+-- quotation from the plan type's compute() — see app/Core/Placeholder.php.
+-- (These are TEXT columns, so a real newline is wanted: use \n, NOT \\n.)
+INSERT INTO `plans` (`id`, `name`, `plan_type`, `description`, `amount`, `parameters`, `benefits`, `summary_template`, `terms_template`, `status`) VALUES
     (1, 'Royal Plus', 'royal_plus',
         'Interest/harvest-income plan, 1–4 year tenure, monthly or annual payout.', 0.00,
         '{"years":{"1":{"monthly_rate":2,"annual_rate":24},"2":{"monthly_rate":2,"annual_rate":24},"3":{"monthly_rate":2,"annual_rate":24},"4":{"monthly_rate":2,"annual_rate":24}}}',
         '• Guaranteed harvest income for the full tenure.\n• Ownership share of an Agarwood plantation land.\n• Full capital returned together with the total maturity value.\n• Free to choose monthly or annual harvest payout.',
+        'Based on the above quotation, the customer invests ${amount} under the Oxiaura ${plan_name} plan for a term of ${term_label}.\nThe agreed return is ${payout_amount}, payable ${payout_frequency}.\nTotal scheduled returns over the ${term_label} term: ${total_return}.',
+        'The investment term is ${term_months} months from the agreed commencement date.\nThe return of ${payout_amount} shall be payable according to the agreed payment schedule.\nThe investment amount is ${amount}.\nThe investment agreement and applicable company terms shall govern the investment.\nAny applicable taxes, statutory deductions, fees, or other charges shall be handled according to the applicable agreement and regulations.\nThis quotation is subject to formal acceptance and execution of the relevant investment agreement and required customer documentation.',
         'active'),
     (2, 'Guaranteed Plus', 'guaranteed_plus',
         'Interest/harvest-income plan, 2–5 year tenure, monthly or annual payout.', 0.00,
         '{"years":{"2":{"monthly_rate":2,"annual_rate":24},"3":{"monthly_rate":2,"annual_rate":24},"4":{"monthly_rate":2,"annual_rate":24},"5":{"monthly_rate":2,"annual_rate":24}}}',
         '• Guaranteed harvest income across a 2–5 year tenure.\n• Higher returns for longer commitment periods.\n• Full capital returned together with the total maturity value.\n• Free to choose monthly or annual harvest payout.',
+        'Based on the above quotation, the customer invests ${amount} under the Oxiaura ${plan_name} plan for a term of ${term_label}.\nThe agreed return is ${payout_amount}, payable ${payout_frequency}.\nTotal scheduled returns over the ${term_label} term: ${total_return}.',
+        'The investment term is ${term_months} months from the agreed commencement date.\nThe return of ${payout_amount} shall be payable according to the agreed payment schedule.\nThe investment amount is ${amount}.\nThe investment agreement and applicable company terms shall govern the investment.\nAny applicable taxes, statutory deductions, fees, or other charges shall be handled according to the applicable agreement and regulations.\nThis quotation is subject to formal acceptance and execution of the relevant investment agreement and required customer documentation.',
         'active'),
     (3, 'Monthly Wealth Plan', 'monthly_wealth',
         'One-time investment repaid monthly over 96 months plus a maturity benefit.', 0.00,
         '{"repay_months":96,"monthly_repay_rate":1.5,"maturity_benefit_rate":25}',
         '• Single one-time investment, no recurring payments required.\n• Steady monthly income for the full 8-year (96 month) term.\n• Additional maturity benefit paid at the end of the term.\n• Backed by an appreciating Agarwood plantation asset.',
+        'Based on the above quotation, the customer invests ${amount} under the ${plan_name} for a term of ${term_label}.\nThe agreed monthly re-payment is ${monthly_repay}, payable for ${payments_count} months.\nA maturity benefit of ${maturity_benefit} is paid at the end of the term, giving a total value of ${total_value}.',
+        'The investment term is ${term_months} months from the agreed commencement date.\nThe monthly re-payment of ${monthly_repay} shall be payable according to the agreed payment schedule.\nA maturity benefit of ${maturity_benefit} shall be paid at the end of the term.\nThe investment amount is ${amount}.\nAny applicable taxes, statutory deductions, fees, or other charges shall be handled according to the applicable agreement and regulations.\nThis quotation is subject to formal acceptance and execution of the relevant investment agreement and required customer documentation.',
         'active'),
     (4, 'Supreme Plus Plan', 'supreme_plus',
         'Pay-in over 50 months, then converts to a Monthly Wealth plan with repayments.', 0.00,
         '{"contribution_months":50,"repay_months":96,"monthly_repay_rate":1.5,"maturity_benefit_rate":25}',
         '• Build capital with affordable monthly payments over the pay-in term.\n• Automatically converts to a Monthly Wealth plan once complete.\n• Earns monthly re-payments plus a maturity benefit thereafter.\n• Ideal for disciplined, long-term wealth building.',
+        'Based on the above quotation, the customer contributes ${monthly_contribution} monthly for ${contribution_months} months to complete a capital of ${amount} under the ${plan_name}.\nAfter completion the plan converts to a monthly re-payment plan of ${monthly_repay}, payable for ${repay_months} months.\nA maturity benefit of ${maturity_benefit} is paid at the end of the term, giving a total value of ${total_value}.',
+        'The contribution term is ${contribution_months} months from the agreed commencement date.\nThe monthly payment of ${monthly_contribution} shall be payable according to the agreed payment schedule.\nThe completed capital is ${amount}.\nUpon completion the plan converts to a ${repay_months}-month re-payment plan with a maturity benefit of ${maturity_benefit}.\nAny applicable taxes, statutory deductions, fees, or other charges shall be handled according to the applicable agreement and regulations.\nThis quotation is subject to formal acceptance and execution of the relevant investment agreement and required customer documentation.',
         'active'),
     (5, 'Golden Crop', 'golden_crop',
         'Company plants a chosen crop on the customer''s bare land; priced per 10 perches.', 0.00,
         '{"crops":[{"name":"Agarwood","price_per_10perch":250000,"harvest_value_per_10perch":1500000},{"name":"Sandalwood","price_per_10perch":300000,"harvest_value_per_10perch":1800000},{"name":"Teak","price_per_10perch":150000,"harvest_value_per_10perch":900000}]}',
         '• The company plants and maintains the crop on your own land.\n• You retain full ownership of the land and the trees.\n• Significant projected harvest income at maturity.\n• Professional plantation management throughout the growth cycle.',
+        'Based on the above quotation, the customer invests ${amount} to plant ${crop} on ${land_extent} of land under the ${plan_name} plan.\nThe company carries out planting and maintenance on the customer''s own land.\nThe projected harvest income at maturity is ${projected_harvest}.',
+        'The plantation term runs from the agreed commencement date through to harvest maturity.\nThe investment amount of ${amount} covers planting and maintenance of ${crop} on ${land_extent}.\nThe company shall plant and maintain the crop on the customer''s land for the agreed term.\nOwnership of the land and the standing trees remains with the customer.\nThe projected harvest income of ${projected_harvest} is an estimate and not a guarantee.\nThis quotation is subject to formal acceptance and execution of the relevant plantation agreement.',
         'active'),
     (6, 'Plant Selling', 'plant_selling',
         'Direct sale of plants, priced per plant by crop type.', 0.00,
         '{"crops":[{"name":"Agarwood","price_per_plant":1500,"harvest_value_per_plant":25000},{"name":"Sandalwood","price_per_plant":2000,"harvest_value_per_plant":30000},{"name":"Teak","price_per_plant":800,"harvest_value_per_plant":12000}]}',
         '• High-quality, nursery-raised plants supplied directly.\n• Choice of premium crop varieties.\n• Strong projected harvest value per plant at maturity.\n• Optional planting and maintenance guidance available.',
+        'Based on the above quotation, the customer purchases ${quantity} ${crop} plants at ${unit_price} per plant, for a total of ${amount}.\nThe projected harvest value of the plants at maturity is ${projected_harvest}.',
+        'The total purchase price is ${amount} for ${quantity} ${crop} plants at ${unit_price} per plant.\nPlants supplied are nursery-raised and of the agreed variety.\nThe projected harvest value of ${projected_harvest} is an estimate and not a guarantee.\nPlanting and maintenance after hand-over are the customer''s responsibility unless separately agreed.\nAny applicable taxes, statutory deductions, fees, or other charges shall be handled according to the applicable agreement and regulations.\nThis quotation is subject to formal acceptance and execution of the relevant purchase agreement.',
         'active');
 
 INSERT INTO `customers` (`id`, `name`, `address`, `telephone`, `nic`, `email`, `created_by`) VALUES

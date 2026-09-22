@@ -13,7 +13,10 @@ final class Plan extends Model
 {
     protected string $table = 'plans';
 
-    protected array $fillable = ['name', 'plan_type', 'description', 'amount', 'parameters', 'benefits', 'status'];
+    protected array $fillable = [
+        'name', 'plan_type', 'description', 'amount', 'parameters', 'benefits',
+        'summary_template', 'terms_template', 'status',
+    ];
 
     /**
      * Only active plans (for quotation building dropdowns).
