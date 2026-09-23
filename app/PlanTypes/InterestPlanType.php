@@ -15,8 +15,11 @@ namespace App\PlanTypes;
  * Concrete subclasses only differ by key/label and the allowed tenure years.
  *
  * Parameters shape (admin-editable JSON):
- *   ['years' => [ <year> => ['monthly_rate' => %perMonth, 'annual_rate' => %perYear], ... ]]
- * where the rates are a percentage of the invested capital.
+ *   ['years' => [ <year> => ['annual_rate' => %perYear], ... ]]
+ * where the rate is a percentage of the invested capital per YEAR. That single
+ * figure is the source of truth: the monthly payout the letter quotes is
+ * derived as annual_rate / 12 at compute time, so a plan can no longer hold a
+ * monthly rate that disagrees with its annual one.
  */
 abstract class InterestPlanType extends AbstractPlanType
 {
@@ -30,8 +33,9 @@ abstract class InterestPlanType extends AbstractPlanType
 
     public function formulaNote(): string
     {
-        return 'Monthly: profit = investment × monthly rate, paid ×12 each year. '
-            . 'Annual: profit = investment × annual rate per year. '
+        return 'Each tenure carries one rate: the annual rate, as a percentage of the invested capital. '
+            . 'Annual payout: profit = investment × annual rate. '
+            . 'Monthly payout: profit = investment × (annual rate ÷ 12), paid ×12 each year. '
             . 'Total maturity value = investment + (profit over the full tenure).';
     }
 
@@ -54,9 +58,9 @@ abstract class InterestPlanType extends AbstractPlanType
     {
         $years = [];
         foreach ($this->yearOptions() as $y) {
-            // Seeded from the Royal Plus sample (1yr monthly = 2%/month = 24%/yr).
+            // Seeded from the Royal Plus sample (24% a year = 2% a month).
             // These are placeholders for other tenures — adjust in Settings.
-            $years[$y] = ['monthly_rate' => 2.0, 'annual_rate' => 24.0];
+            $years[$y] = ['annual_rate' => 24.0];
         }
 
         return ['years' => $years];
@@ -105,7 +109,7 @@ abstract class InterestPlanType extends AbstractPlanType
             'annual_return'    => 'One year of returns',
             'total_return'     => 'Total returns over the whole term',
             'total_maturity'   => 'Capital + total returns',
-            'rate_monthly'     => 'Monthly rate as a percentage',
+            'rate_monthly'     => 'Monthly rate as a percentage (annual rate ÷ 12)',
             'rate_annual'      => 'Annual rate as a percentage',
         ];
     }
@@ -125,34 +129,55 @@ abstract class InterestPlanType extends AbstractPlanType
         return $errors;
     }
 
+    /**
+     * A tenure's annual rate, as a percentage of the invested capital.
+     *
+     * `annual_rate` is the stored truth. `monthly_rate` is honoured only as a
+     * fallback for plan rows written before rates were stored annually — there
+     * the monthly figure is the one that was entered, so it is ×12 to reach the
+     * year. A row carrying both uses the annual figure: that is the point of
+     * the single-rate shape, since the two could (and did) drift apart.
+     *
+     * @param array<string,mixed> $rates
+     */
+    private function annualRate(array $rates): float
+    {
+        if (is_numeric($rates['annual_rate'] ?? null)) {
+            return (float) $rates['annual_rate'];
+        }
+        if (is_numeric($rates['monthly_rate'] ?? null)) {
+            return (float) $rates['monthly_rate'] * 12;
+        }
+        return 24.0;
+    }
+
     public function compute(array $inputs, array $params): array
     {
         $investment = $this->num($inputs['investment'] ?? 0);
         $year       = $this->int($inputs['period_years'] ?? ($this->yearOptions()[0] ?? 1));
         $method     = ($inputs['method'] ?? 'monthly') === 'annual' ? 'annual' : 'monthly';
 
-        $rates = $params['years'][$year] ?? $params['years'][(string) $year] ?? ['monthly_rate' => 2.0, 'annual_rate' => 24.0];
+        $rates = $params['years'][$year] ?? $params['years'][(string) $year] ?? [];
 
-        $monthlyRate = (float) ($rates['monthly_rate'] ?? 2.0);
-        $annualRate  = (float) ($rates['annual_rate'] ?? 24.0);
+        $annualRate  = $this->annualRate($rates);
+        $monthlyRate = $annualRate / 12;
 
         $yearLabel = $year . ' Year' . ($year > 1 ? 's' : '');
         $months    = $year * 12;
 
-        // `monthly_rate` is a percentage of capital PER MONTH (annual_rate is
-        // the per-year equivalent) — neither is divided by 12.
-        $monthlyProfit = $investment * ($monthlyRate / 100);
+        // The annual rate is the stored truth, so every figure below comes from
+        // it — including the monthly payout, which is the annual rate ÷ 12.
+        // Deriving both from one number is what keeps a monthly quote and an
+        // annual quote of the same plan consistent with each other.
         $annualProfit  = $investment * ($annualRate / 100);
+        $monthlyProfit = $investment * ($monthlyRate / 100);
+        $totalProfit   = $annualProfit * $year;
+        $maturity      = $investment + $totalProfit;
 
-        if ($method === 'monthly') {
-            $totalProfit = $monthlyProfit * $months;
-            $maturity    = $investment + $totalProfit;
-        } else {
-            $totalProfit = $annualProfit * $year;
-            $maturity    = $investment + $totalProfit;
-        }
+        // The monthly figure is quoted in whole rupees; the annual and total
+        // rows are not built from it (see AbstractPlanType::fmtWhole).
+        $monthlyQuoted = $this->fmtWhole($monthlyProfit);
 
-        $perPeriod    = $method === 'monthly' ? $monthlyProfit : $annualProfit;
         $methodLabel  = $method === 'monthly' ? 'Monthly Profit Payable' : 'Annual Profit Payable';
         $payoutLabel  = $method === 'monthly' ? 'Monthly Return' : 'Annual Return';
         $payments     = $method === 'monthly' ? $months : $year;
@@ -170,10 +195,10 @@ abstract class InterestPlanType extends AbstractPlanType
             'method'           => $method,
             'method_label'     => $methodLabel,
             'payout_label'     => $payoutLabel,
-            'payout_amount'    => $this->fmt($perPeriod),
+            'payout_amount'    => $method === 'monthly' ? $monthlyQuoted : $this->fmt($annualProfit),
             'payout_frequency' => $frequency,
             'payments_count'   => (string) $payments,
-            'monthly_return'   => $this->fmt($monthlyProfit),
+            'monthly_return'   => $monthlyQuoted,
             'annual_return'    => $this->fmt($annualProfit),
             'total_return'     => $this->fmt($totalProfit),
             'total_maturity'   => $this->fmt($maturity),
@@ -190,10 +215,12 @@ abstract class InterestPlanType extends AbstractPlanType
                 'Investment Term'            => $yearLabel,
                 'Total Investment'           => $this->fmt($investment),
                 'Payment Plan'               => $methodLabel,
-                'Monthly Return'             => $method === 'monthly' ? $this->fmt($monthlyProfit) : '',
+                'Monthly Return'             => $method === 'monthly' ? $monthlyQuoted : '',
                 'Number of Monthly Payments' => $method === 'monthly' ? (string) $months : '',
                 'Annual Return'              => $method === 'annual' ? $this->fmt($annualProfit) : '',
-                'Total Annual Returns'       => $method === 'monthly' ? $this->fmt($monthlyProfit * 12) : '',
+                // The year's profit straight off the annual rate — so it agrees
+                // with the monthly row above × 12 only up to the rounding in it.
+                'Total Annual Returns'       => $method === 'monthly' ? $this->fmt($annualProfit) : '',
                 'Total Returns Over Term'    => $year > 1 ? $this->fmt($totalProfit) : '',
                 'Investment Principal'       => $this->fmt($investment),
                 'Total Maturity Value'       => $year > 1 ? $this->fmt($maturity) : '',
@@ -208,7 +235,7 @@ abstract class InterestPlanType extends AbstractPlanType
                 $yearLabel,
                 $this->fmt($investment),
                 $method === 'monthly'
-                    ? $this->fmt($monthlyProfit) . ' x ' . $months
+                    ? $monthlyQuoted . ' x ' . $months
                     : $this->fmt($annualProfit) . ($year > 1 ? " x {$year}" : ''),
                 $this->fmt($maturity),
             ]],

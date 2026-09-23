@@ -111,7 +111,13 @@ specifics:
 `availableTokens($params)` (implemented once in `AbstractPlanType`) derives the token list by running
 a representative `compute()`, so the plan-edit reference panel can never drift from what `compute()`
 actually emits. To add a product: add a class + register it. Rates/prices live in the plan's editable
-`parameters` JSON, **not** in code.
+`parameters` JSON, **not** in code. A rate that is a percentage is stored **per year** — the interest
+plans' `years.<n>.annual_rate` — and the monthly figure the letter quotes is derived as annual ÷ 12 at
+compute time, so a plan cannot hold a monthly rate that contradicts its annual one (a legacy
+`monthly_rate` is only honoured, ×12, when `annual_rate` is absent). Because that division rarely lands
+on a round number, the monthly payout is quoted in whole rupees via `AbstractPlanType::fmtWhole()`; the
+annual, term-total and maturity figures keep full precision and are computed from the annual rate, not
+from the rounded monthly.
 
 **Letter templates** (`plans.summary_template` / `plans.terms_template`): the "Investment Summary" and
 "Terms & Conditions" prose, authored per plan in plan edit mode as `${token}` templates. The plan form

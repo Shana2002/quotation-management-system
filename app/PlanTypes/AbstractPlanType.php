@@ -19,6 +19,22 @@ abstract class AbstractPlanType implements PlanTypeInterface
         return $symbol . ' ' . number_format($amount, 2);
     }
 
+    /**
+     * Format a payout figure rounded to the nearest whole rupee.
+     *
+     * Payouts are quoted in whole rupees, and a monthly figure derived from an
+     * annual rate does not usually land on one: 24% ÷ 12 on Rs. 1,000,000 is
+     * Rs. 20,833.33, which the letter shows as Rs. 20,833.00.
+     *
+     * Totals are deliberately NOT built from this rounded figure — they come
+     * from the annual rate directly, so a year of 20,833.33 still adds up to
+     * Rs. 250,000.00 rather than 20,833 × 12.
+     */
+    protected function fmtWhole(float $amount): string
+    {
+        return $this->fmt(round($amount));
+    }
+
     /** Coerce a possibly-string input to float. */
     protected function num(mixed $value): float
     {
