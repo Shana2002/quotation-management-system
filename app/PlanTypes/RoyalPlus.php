@@ -22,7 +22,7 @@ final class RoyalPlus extends InterestPlanType
 
     protected function yearOptions(): array
     {
-        return [1, 2, 3, 4];
+        return [1, 2, 3, 4, 5];
     }
 
     public function defaultBenefits(): string
