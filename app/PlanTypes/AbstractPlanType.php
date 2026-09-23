@@ -22,13 +22,14 @@ abstract class AbstractPlanType implements PlanTypeInterface
     /**
      * Format a payout figure rounded to the nearest whole rupee.
      *
-     * Payouts are quoted in whole rupees, and a monthly figure derived from an
-     * annual rate does not usually land on one: 24% ÷ 12 on Rs. 1,000,000 is
-     * Rs. 20,833.33, which the letter shows as Rs. 20,833.00.
+     * Payouts are quoted in whole rupees, and a monthly one is a small
+     * percentage of the capital, so it rarely lands on a whole rupee: 2% of
+     * Rs. 1,041,666.50 is Rs. 20,833.33, which the letter shows as
+     * Rs. 20,833.00 (14,666.66 goes the other way, to Rs. 14,667.00).
      *
      * Totals are deliberately NOT built from this rounded figure — they come
-     * from the annual rate directly, so a year of 20,833.33 still adds up to
-     * Rs. 250,000.00 rather than 20,833 × 12.
+     * from the rate itself, so a year of monthly payouts still adds up to the
+     * unrounded figure rather than to the rounded one × 12.
      */
     protected function fmtWhole(float $amount): string
     {
