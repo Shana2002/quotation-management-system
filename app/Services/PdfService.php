@@ -39,8 +39,8 @@ final class PdfService
      * starts: TCPDF draws a paragraph's first line a shade below the y it is
      * given, so the reference's 125.9 pt is set here as 44.05 mm.
      */
-    private const T_MARGIN = 44.05;
-    private const R_MARGIN = 17.09;   // 48.5 pt
+    private const T_MARGIN = 39.05;
+    private const R_MARGIN = 15.09;   // 48.5 pt
     private const CONTENT_W = 173.86; // 210 - L_MARGIN - R_MARGIN
 
     /*
@@ -61,37 +61,32 @@ final class PdfService
      * what TCPDF's line box already contributes, so that the ink — not the box —
      * lands where the reference puts it.
      */
-    private const GAP_ADDR      = 7.37;  // date block  → salutation
+    private const GAP_ADDR      = 3.37;  // date block  → salutation
     private const GAP_SALUTE    = 2.97;  // salutation  → opening paragraph
-    private const GAP_INTRO     = 5.15;  // paragraph   → details heading
+    private const GAP_INTRO     = 4.15;  // paragraph   → details heading
     private const GAP_DETAILS   = 6.16;  // heading     → details table
     private const GAP_SUMMARY   = 6.20;  // table       → summary heading
     private const GAP_SUMMARY_L = 0.60;  // heading     → summary list
     private const GAP_TERMS     = 0.94;  // summary     → terms heading
     private const GAP_TERMS_L   = 0.38;  // heading     → terms list
-    private const GAP_SIGNOFF   = 4.34;  // terms       → "Thank you,"
-    private const GAP_SIGNATURE = 10.88; // signoff     → signature block
+    private const GAP_SIGNOFF   = 2.34;  // terms       → "Thank you,"
+    private const GAP_SIGNATURE = 8.88; // signoff     → signature block
 
     private const TBL_X      = 34.85; // table is centred on the page
     private const TBL_W      = 139.89;
-    private const TBL_C1     = 63.20; // Description column, to the reference's rule
+    private const TBL_C1     = 62.895; // the centre divider, from the table's left rule
     private const TBL_ROW_H  = 6.14;  // 17.4 pt
     private const TBL_HEAD_H = 6.48;  // 18.4 pt
 
     /*
-     * The reference letter's table is not a collapsed grid. Every cell carries
-     * its own rule, the cells are set apart — 2.05 pt between the columns,
-     * 2.16 pt between the rows — and the table draws a rule of its own a further
-     * 1.8 pt outside the cells. A collapsed grid draws each interior boundary
-     * once, which reads visibly lighter than the original.
+     * The table is a collapsed grid: each boundary is drawn once, whether it
+     * separates two rows, the two columns or the table from the page. The gap
+     * between the rules and the text they fence in is TBL_PAD, below — the
+     * rules are drawn on the grid's lines, and the cells sit inside them.
      */
-    private const TBL_SPACING_H = 0.723;  // 2.05 pt — between the two columns
-    private const TBL_SPACING_V = 0.762;  // 2.16 pt — between the rows
-    private const TBL_FRAME_IN = 0.635;   // 1.80 pt — table rule outside the cells
-    private const TBL_CELL1_W   = 61.898; // 175.46 pt — first column's cell
     /**
      * Where the cell grid starts, relative to the cell TCPDF lays the first
-     * row's text out in (-2.86 pt).
+     * row's text out in (-1.78 pt).
      *
      * The two are not the same box. TCPDF centres a row's text in the cell it
      * is given, whereas the reference carries each row's spacing above its rule:
@@ -99,7 +94,7 @@ final class PdfService
      * reference's own placement — measured against a row's text, which is what
      * the reader sees — keeps the rules on the letters' lines.
      */
-    private const TBL_GRID_SHIFT = -1.009;
+    private const TBL_GRID_SHIFT = -0.628;
 
     private const LIST_MARKER_X = 25.40; // 72.0 pt — bullet / "1."
     private const LIST_TEXT_X   = 31.75; // 90.0 pt — text, and wrapped lines
@@ -109,13 +104,12 @@ final class PdfService
     private const LINE_H  = 4.74;  // 13.44 pt — list line height
 
     /**
-     * The table's own text insets, in millimetres. The reference tucks the
-     * label ~1.06 mm in from the left rule but lets the value run to within
-     * 0.18 mm of the right one; TCPDF applies a single padding to both sides,
-     * so the pair is set for the duration of the table and restored after.
+     * The gap between a cell's text and the rule beside it, in millimetres. One
+     * figure for every side, so the hairline grid reads with the same air above,
+     * below and either side of each line. TCPDF applies it to the cells for the
+     * duration of the table, then it is restored.
      */
-    private const TBL_PAD_L = 1.06;
-    private const TBL_PAD_R = 0.18;
+    private const TBL_PAD = 2.00;
 
     /**
      * Line heights as a multiple of the font size — what TCPDF's HTML renderer
@@ -454,14 +448,15 @@ final class PdfService
     }
 
     /**
-     * Draw the flat "Investment Plan Details" table: two columns, a hairline
-     * grid, header centred and the values right-aligned, on no fill — so the
-     * letterhead's watermark stays visible through the table.
+     * Draw the flat "Investment Plan Details" table: two columns, a single
+     * hairline grid, header centred and the values right-aligned, on no fill —
+     * so the letterhead's watermark stays visible through the table.
      *
-     * Drawn with the Cell()/Rect() API rather than writeHTML because TCPDF's
+     * Drawn with the Cell()/Line() API rather than writeHTML because TCPDF's
      * HTML renderer has no per-side border control (no border-collapse, no
-     * border-left) and no way to set cells apart from one another, which is
-     * exactly the treatment the reference letter's table has.
+     * border-left), which is exactly the treatment this table has: every
+     * boundary is ruled once — between two rows, down the centre divider and
+     * around the outside — and the text is held off the rules by TBL_PAD.
      *
      * @param array<string,mixed> $details
      */
@@ -472,96 +467,94 @@ final class PdfService
         $rows    = Quotation::detailRows(['details' => $details]);
 
         $pad = $pdf->getCellPaddings();
-        $pdf->setCellPaddings(self::TBL_PAD_L, 0, self::TBL_PAD_R, 0);
+        $pdf->setCellPaddings(self::TBL_PAD, 0, self::TBL_PAD, 0);
 
-        $widths    = [self::TBL_CELL1_W, self::TBL_W - 2 * self::TBL_FRAME_IN - self::TBL_CELL1_W - self::TBL_SPACING_H];
-        $gridTop   = $pdf->GetY() + self::TBL_GRID_SHIFT;
-        $gridStart = $gridTop;
+        $widths    = [self::TBL_C1, self::TBL_W - self::TBL_C1];
         $page      = $pdf->getPage();
+        $gridStart = $pdf->GetY() + self::TBL_GRID_SHIFT;
 
-        $this->tableRow($pdf, (string) ($headers[0] ?? ''), (string) ($headers[1] ?? ''), self::TBL_HEAD_H, true, $widths, $gridTop);
-        $gridTop += self::TBL_HEAD_H;
+        $this->tableRow($pdf, [(string) ($headers[0] ?? ''), (string) ($headers[1] ?? '')], $widths, self::TBL_HEAD_H, true, ['L', 'R']);
         foreach ($rows as $row) {
             $this->tableRow(
                 $pdf,
-                html_entity_decode((string) ($row['label'] ?? ''), ENT_QUOTES, 'UTF-8'),
-                html_entity_decode((string) ($row['value'] ?? ''), ENT_QUOTES, 'UTF-8'),
+                [
+                    html_entity_decode((string) ($row['label'] ?? ''), ENT_QUOTES, 'UTF-8'),
+                    html_entity_decode((string) ($row['value'] ?? ''), ENT_QUOTES, 'UTF-8'),
+                ],
+                $widths,
                 self::TBL_ROW_H,
                 false,
-                $widths,
-                $gridTop
+                ['L', 'R']
             );
-            $gridTop += self::TBL_ROW_H;
         }
+
+        // The rule closing the last row. Every other horizontal boundary is the
+        // top rule of the row beneath it, drawn by tableRow().
+        $gridEnd = $pdf->GetY() + self::TBL_GRID_SHIFT;
+        $this->tableRule($pdf, $gridEnd);
 
         $pdf->setCellPaddings($pad['L'], $pad['T'], $pad['R'], $pad['B']);
 
         if ($pdf->getPage() === $page) {
-            $this->tableFrame($pdf, $gridStart, $gridTop);
+            $this->tableSides($pdf, [0.0, self::TBL_C1, self::TBL_W], $gridStart, $gridEnd);
         }
     }
 
     /**
-     * One table row: label left, value right, each inside a cell of its own.
+     * One table row: the cells laid out across the grid's columns, under the
+     * rule that opens the row.
      *
-     * @param float[] $widths
+     * A row draws the rule above itself rather than closing the row before it,
+     * so a row that breaks to a fresh page carries its rule across with it and
+     * no boundary is ever ruled twice.
+     *
+     * @param string[] $cells
+     * @param float[]  $widths
+     * @param string[] $aligns 'L', 'C' or 'R' per column; the header ignores it
      */
-    private function tableRow(LetterPdf $pdf, string $label, string $value, float $height, bool $header, array $widths, float $gridTop): void
+    private function tableRow(LetterPdf $pdf, array $cells, array $widths, float $height, bool $header, array $aligns): void
     {
         $this->pageBreak($pdf, $height);
 
         $y = $pdf->GetY();
 
+        $this->tableRule($pdf, $y + self::TBL_GRID_SHIFT);
+
         $pdf->SetFont($this->font(), '', $header ? self::HEAD_PT : self::BODY_PT);
 
-        $pdf->SetXY(self::TBL_X, $y);
-        $pdf->Cell(self::TBL_C1, $height, $label, 0, 0, $header ? 'C' : 'L', false, '', 0, false, 'T', 'M');
-
-        $pdf->SetXY(self::TBL_X + self::TBL_C1, $y);
-        $pdf->Cell(self::TBL_W - self::TBL_C1, $height, $value, 0, 0, $header ? 'C' : 'R', false, '', 0, false, 'T', 'M');
-
-        $this->tableCells($pdf, $gridTop, $height, $widths);
+        $x = self::TBL_X;
+        foreach ($cells as $i => $cell) {
+            $w = $widths[$i] ?? end($widths);
+            $pdf->SetXY($x, $y);
+            $pdf->Cell($w, $height, $cell, 0, 0, $header ? 'C' : ($aligns[$i] ?? 'L'), false, '', 0, false, 'T', 'M');
+            $x += $w;
+        }
 
         $pdf->SetY($y + $height);
     }
 
-    /**
-     * Draw one row's cell rules.
-     *
-     * Each cell is a rectangle of its own, inset from the row's band by half the
-     * row spacing, so that consecutive rows show the reference's two rules with
-     * a hairline of paper between them.
-     *
-     * @param float[] $widths
-     */
-    private function tableCells(LetterPdf $pdf, float $gridTop, float $height, array $widths): void
+    /** One horizontal rule, across the full width of the table. */
+    private function tableRule(LetterPdf $pdf, float $y): void
     {
-        $top = $gridTop + self::TBL_SPACING_V / 2;
-        $h   = $height - self::TBL_SPACING_V;
-        $x   = self::TBL_X + self::TBL_FRAME_IN;
-
-        foreach ($widths as $w) {
-            $pdf->Rect($x, $top, $w, $h);
-            $x += $w + self::TBL_SPACING_H;
-        }
+        $pdf->Line(self::TBL_X, $y, self::TBL_X + self::TBL_W, $y);
     }
 
     /**
-     * Draw the table's own rule around the completed cell grid.
+     * The table's vertical rules, given as offsets from the table's left rule:
+     * the two outside edges and the divider between each pair of columns.
      *
-     * Called once the whole table has been laid out, because the rule needs the
-     * table's full height. The caller skips it when the table ran over a page
-     * break: the rule describes the table as a whole, and a fragment of it
-     * drawn down one page would not describe anything.
+     * Skipped when the table ran over a page break — these rules span the
+     * table's full height, and a fragment of them down one page would not
+     * describe anything.
+     *
+     * @param float[] $offsets
      */
-    private function tableFrame(LetterPdf $pdf, float $gridTop, float $gridBottom): void
+    private function tableSides(LetterPdf $pdf, array $offsets, float $gridTop, float $gridBottom): void
     {
-        $pdf->Rect(
-            self::TBL_X,
-            $gridTop + self::TBL_SPACING_V / 2 - self::TBL_FRAME_IN,
-            self::TBL_W,
-            $gridBottom - $gridTop - self::TBL_SPACING_V + 2 * self::TBL_FRAME_IN
-        );
+        foreach ($offsets as $offset) {
+            $x = self::TBL_X + $offset;
+            $pdf->Line($x, $gridTop, $x, $gridBottom);
+        }
     }
 
     /**
@@ -581,55 +574,31 @@ final class PdfService
         $cols = max(1, count($headers));
         $esc  = static fn ($v) => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8');
 
-        // Column width inside the cell grid, so the legacy table keeps the same
-        // spaced-cell treatment as the details table.
-        $gridW  = self::TBL_W - 2 * self::TBL_FRAME_IN;
-        $w      = ($gridW - ($cols - 1) * self::TBL_SPACING_H) / $cols;
+        // Columns divide the table's width between them, so the dividers land on
+        // the same collapsed grid the details table uses.
+        $w      = self::TBL_W / $cols;
         $widths = array_fill(0, $cols, $w);
+        $aligns = array_fill(0, $cols, 'L');
 
-        $pad  = $pdf->getCellPaddings();
-        $pdf->setCellPaddings(self::TBL_PAD_L, 0, self::TBL_PAD_R, 0);
+        $pad = $pdf->getCellPaddings();
+        $pdf->setCellPaddings(self::TBL_PAD, 0, self::TBL_PAD, 0);
 
-        $gridTop   = $pdf->GetY() + self::TBL_GRID_SHIFT;
-        $gridStart = $gridTop;
         $page      = $pdf->getPage();
+        $gridStart = $pdf->GetY() + self::TBL_GRID_SHIFT;
 
-        $this->tableRowRaw($pdf, array_map($esc, $headers), $widths, self::TBL_HEAD_H, true, $gridTop);
-        $gridTop += self::TBL_HEAD_H;
+        $this->tableRow($pdf, array_map($esc, $headers), $widths, self::TBL_HEAD_H, true, $aligns);
         foreach ($rows as $row) {
-            $this->tableRowRaw($pdf, array_map($esc, (array) $row), $widths, self::TBL_ROW_H, false, $gridTop);
-            $gridTop += self::TBL_ROW_H;
+            $this->tableRow($pdf, array_map($esc, (array) $row), $widths, self::TBL_ROW_H, false, $aligns);
         }
+
+        $gridEnd = $pdf->GetY() + self::TBL_GRID_SHIFT;
+        $this->tableRule($pdf, $gridEnd);
 
         $pdf->setCellPaddings($pad['L'], $pad['T'], $pad['R'], $pad['B']);
 
         if ($pdf->getPage() === $page) {
-            $this->tableFrame($pdf, $gridStart, $gridTop);
+            $this->tableSides($pdf, array_map(static fn (int $i): float => $i * $w, range(0, $cols)), $gridStart, $gridEnd);
         }
-    }
-
-    /**
-     * @param string[] $cells
-     * @param float[]  $widths
-     */
-    private function tableRowRaw(LetterPdf $pdf, array $cells, array $widths, float $height, bool $header, float $gridTop): void
-    {
-        $this->pageBreak($pdf, $height);
-
-        $y = $pdf->GetY();
-        $pdf->SetFont($this->font(), '', $header ? self::HEAD_PT : self::BODY_PT);
-
-        $x = self::TBL_X + self::TBL_FRAME_IN;
-        foreach ($cells as $i => $cell) {
-            $w = $widths[$i] ?? end($widths);
-            $pdf->SetXY($x, $y);
-            $pdf->Cell($w, $height, $cell, 0, 0, $header ? 'C' : 'L', false, '', 0, false, 'T', 'M');
-            $x += $w + self::TBL_SPACING_H;
-        }
-
-        $this->tableCells($pdf, $gridTop, $height, $widths);
-
-        $pdf->SetY($y + $height);
     }
 
     /**
