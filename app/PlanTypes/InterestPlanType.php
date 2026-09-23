@@ -146,7 +146,7 @@ abstract class InterestPlanType extends AbstractPlanType
             return (float) $rates['annual_rate'];
         }
         if (is_numeric($rates['monthly_rate'] ?? null)) {
-            return (float) $rates['monthly_rate'] * 12;
+            return (float) $rates['monthly_rate'];
         }
         return 24.0;
     }
@@ -157,18 +157,18 @@ abstract class InterestPlanType extends AbstractPlanType
         $year       = $this->int($inputs['period_years'] ?? ($this->yearOptions()[0] ?? 1));
         $method     = ($inputs['method'] ?? 'monthly') === 'annual' ? 'annual' : 'monthly';
 
-        $rates = $params['years'][$year] ?? $params['years'][(string) $year] ?? ['monthly_rate' => 2.0, 'annual_rate' => 24.0];
+        $rates = $params['years'][$year] ?? $params['years'][(string) $year] ?? ['monthly_rate' => 28.0, 'annual_rate' => 29.0];
 
         // `monthly_rate` is a percentage of capital PER MONTH and `annual_rate`
         // a percentage per YEAR. They are independent figures, each used exactly
         // as the plan's admin entered it — neither is derived from the other.
-        $monthlyRate = (float) ($rates['monthly_rate'] ?? 2.0);
-        $annualRate  = (float) ($rates['annual_rate'] ?? 24.0);
+        $monthlyRate = (float) ($rates['monthly_rate'] ?? 28.0);
+        $annualRate  = (float) ($rates['annual_rate'] ?? 29.0);
 
         $yearLabel = $year . ' Year' . ($year > 1 ? 's' : '');
         $months    = $year * 12;
 
-        $monthlyProfit = $investment * ($monthlyRate / 100);
+        $monthlyProfit = $investment * ($monthlyRate / 100) / 12;
         $annualProfit  = $investment * ($annualRate / 100);
 
         if ($method === 'monthly') {
