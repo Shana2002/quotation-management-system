@@ -13,7 +13,16 @@ final class Plan extends Model
 {
     protected string $table = 'plans';
 
-    protected array $fillable = ['name', 'plan_type', 'description', 'amount', 'parameters', 'benefits', 'status'];
+    /**
+     * `benefits` is deliberately absent: the letter no longer carries a
+     * Benefits & Conditions block, so nothing writes it. The column and any
+     * text already stored stay in the database, and leaving it out of the
+     * fillable list means an ordinary plan edit cannot blank it.
+     */
+    protected array $fillable = [
+        'name', 'plan_type', 'description', 'amount', 'parameters',
+        'summary_template', 'terms_template', 'status',
+    ];
 
     /**
      * Only active plans (for quotation building dropdowns).

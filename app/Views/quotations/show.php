@@ -4,7 +4,14 @@ $statuses = ['draft', 'sent', 'accepted', 'rejected', 'expired'];
 $headers = $projection['headers'] ?? [];
 $rows    = $projection['rows'] ?? [];
 $summary = $projection['summary'] ?? [];
-$benefits = trim((string) ($projection['benefits'] ?? ''));
+
+// Flat "Investment Plan Details" table, as printed on the letter: an ordered
+// list of label/value rows. detailRows() also flattens the sectioned shape
+// carried by quotations issued before that layout, so those still render.
+$details      = is_array($projection['details'] ?? null) ? $projection['details'] : null;
+$detailRows   = \App\Models\Quotation::detailRows($projection);
+$summaryLines = (array) ($projection['summary_lines'] ?? []);
+$termsLines   = (array) ($projection['terms_lines'] ?? []);
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
@@ -41,20 +48,57 @@ $benefits = trim((string) ($projection['benefits'] ?? ''));
                     <p><?= e($projection['intro']) ?></p>
                 <?php endif; ?>
 
-                <div class="table-responsive">
-                    <table class="table table-bordered align-middle">
-                        <thead class="table-light">
-                            <tr><?php foreach ($headers as $h): ?><th class="text-center"><?= e($h) ?></th><?php endforeach; ?></tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($rows as $row): ?>
-                                <tr><?php foreach ($row as $cell): ?><td class="text-center fw-semibold"><?= e($cell) ?></td><?php endforeach; ?></tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
+                <?php if ($detailRows !== []): ?>
+                    <h6 class="text-muted"><?= e($details['title'] ?? 'Investment Plan Details') ?></h6>
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <?php foreach (($details['headers'] ?? ['Description', 'Details']) as $h): ?>
+                                        <th><?= e($h) ?></th>
+                                    <?php endforeach; ?>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($detailRows as $row): ?>
+                                    <tr>
+                                        <td class="text-muted"><?= e($row['label'] ?? '') ?></td>
+                                        <td class="fw-semibold"><?= e($row['value'] ?? '') ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php else: ?>
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr><?php foreach ($headers as $h): ?><th class="text-center"><?= e($h) ?></th><?php endforeach; ?></tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($rows as $row): ?>
+                                    <tr><?php foreach ($row as $cell): ?><td class="text-center fw-semibold"><?= e($cell) ?></td><?php endforeach; ?></tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
 
-                <?php if ($summary !== []): ?>
+                <?php if ($summaryLines !== []): ?>
+                    <h6 class="text-muted mt-3">Investment Summary</h6>
+                    <ul class="small">
+                        <?php foreach ($summaryLines as $line): ?><li><?= e($line) ?></li><?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+
+                <?php if ($termsLines !== []): ?>
+                    <h6 class="text-muted mt-3">Terms &amp; Conditions</h6>
+                    <ol class="small">
+                        <?php foreach ($termsLines as $line): ?><li><?= e($line) ?></li><?php endforeach; ?>
+                    </ol>
+                <?php endif; ?>
+
+                <?php if ($detailRows === [] && $summary !== []): ?>
                     <div class="row justify-content-end">
                         <div class="col-sm-6">
                             <?php foreach ($summary as $label => $value): ?>
@@ -64,11 +108,6 @@ $benefits = trim((string) ($projection['benefits'] ?? ''));
                             <?php endforeach; ?>
                         </div>
                     </div>
-                <?php endif; ?>
-
-                <?php if ($benefits !== ''): ?>
-                    <hr><h6 class="text-muted">Benefits &amp; Conditions</h6>
-                    <div class="small text-muted"><?= nl2br(e($benefits)) ?></div>
                 <?php endif; ?>
 
                 <?php if (!empty($quotation['notes'])): ?>

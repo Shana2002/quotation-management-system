@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use App\Core\Controller;
 use App\Core\Flash;
+use App\Core\Placeholder;
 use App\Core\Session;
 use App\Core\Validator;
 use App\Models\ActivityLog;
@@ -16,7 +17,8 @@ use App\PlanTypes\PlanTypeRegistry;
  * PlanController — CRUD for OXIAURA's plan-type products. Reads are open to all
  * roles (so quotations can reference plans); writes are admin-only (enforced by
  * route middleware). Each plan carries a plan_type, an editable `parameters`
- * JSON (rates/prices), and `benefits` text.
+ * JSON (rates/prices), and the `${token}` letter templates for its Investment
+ * Summary and Terms & Conditions.
  */
 final class PlanController extends Controller
 {
@@ -106,13 +108,17 @@ final class PlanController extends Controller
 
     /**
      * Validate plan input. The `parameters` field must be valid JSON whose
-     * shape matches the chosen plan type.
+     * shape matches the chosen plan type, and the summary/terms templates may
+     * only reference `${token}`s that plan type can actually supply.
      *
      * @return array<string,mixed>|null
      */
     private function validatePlan(): ?array
     {
-        $input = $this->request->only(['name', 'plan_type', 'description', 'benefits', 'parameters', 'status']);
+        $input = $this->request->only([
+            'name', 'plan_type', 'description', 'parameters', 'status',
+            'summary_template', 'terms_template',
+        ]);
 
         $validator = new Validator($input, [
             'name'      => 'required|max:150',
@@ -122,16 +128,42 @@ final class PlanController extends Controller
 
         $errors = $validator->flatErrors();
 
-        if (PlanTypeRegistry::get((string) $input['plan_type']) === null) {
+        $type = PlanTypeRegistry::get((string) $input['plan_type']);
+        if ($type === null) {
             $errors[] = 'Unknown plan type.';
         }
 
         // Parameters must be valid JSON (empty allowed → {}).
-        $params = trim((string) ($input['parameters'] ?? ''));
-        if ($params !== '') {
-            json_decode($params);
+        $paramsJson = trim((string) ($input['parameters'] ?? ''));
+        $params     = [];
+        if ($paramsJson !== '') {
+            $decoded = json_decode($paramsJson, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 $errors[] = 'Parameters must be valid JSON: ' . json_last_error_msg();
+            } elseif (is_array($decoded)) {
+                $params = $decoded;
+            }
+        }
+
+        // Reject ${token}s the plan type cannot resolve — far better to catch a
+        // typo here than to print "${amunt}" on a customer's letter.
+        if ($type !== null) {
+            try {
+                $available = $type->availableTokens($params);
+            } catch (\Throwable $e) {
+                // A plan type that cannot be sampled (odd parameters) skips the
+                // check rather than flagging every token as unknown.
+                $available = null;
+            }
+
+            if ($available !== null) {
+                foreach (['summary_template' => 'Investment Summary', 'terms_template' => 'Terms & Conditions'] as $field => $label) {
+                    $unknown = Placeholder::unknown((string) ($input[$field] ?? ''), $available);
+                    if ($unknown !== []) {
+                        $quoted = implode(', ', array_map(static fn (string $t): string => '${' . $t . '}', $unknown));
+                        $errors[] = $label . ' uses placeholder(s) this plan type cannot fill: ' . $quoted . '.';
+                    }
+                }
             }
         }
 
@@ -142,13 +174,14 @@ final class PlanController extends Controller
         }
 
         return [
-            'name'        => $input['name'],
-            'plan_type'   => $input['plan_type'],
-            'description' => $input['description'] ?? '',
-            'amount'      => 0,
-            'parameters'  => $params !== '' ? $params : '{}',
-            'benefits'    => $input['benefits'] ?? '',
-            'status'      => $input['status'],
+            'name'             => $input['name'],
+            'plan_type'        => $input['plan_type'],
+            'description'      => $input['description'] ?? '',
+            'amount'           => 0,
+            'parameters'       => $paramsJson !== '' ? $paramsJson : '{}',
+            'summary_template' => (string) ($input['summary_template'] ?? ''),
+            'terms_template'   => (string) ($input['terms_template'] ?? ''),
+            'status'           => $input['status'],
         ];
     }
 }

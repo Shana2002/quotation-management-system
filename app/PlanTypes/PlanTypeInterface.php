@@ -57,6 +57,30 @@ interface PlanTypeInterface
     public function defaultBenefits(): string;
 
     /**
+     * Default "Investment Summary" template (bullets, one per line) for a new
+     * plan of this type. May contain `${token}` placeholders.
+     */
+    public function defaultSummary(): string;
+
+    /**
+     * Default "Terms & Conditions" template (one clause per line; the renderer
+     * numbers them) for a new plan of this type. May contain `${token}`s.
+     */
+    public function defaultTerms(): string;
+
+    /**
+     * The `${token}` names this plan type's compute() can supply, mapped to a
+     * human description for the plan-edit token reference panel.
+     *
+     * Resolved from a representative compute(), so the list can never drift
+     * out of sync with what compute() actually emits.
+     *
+     * @param array<string,mixed> $params
+     * @return array<string,string> token name => description
+     */
+    public function availableTokens(array $params): array;
+
+    /**
      * Validate captured inputs; return a list of human error strings.
      *
      * @param array<string,mixed> $inputs
@@ -67,15 +91,28 @@ interface PlanTypeInterface
     /**
      * Compute the projection from inputs + plan parameters.
      *
+     * The projection is deliberately render-agnostic: the show view and the PDF
+     * both render it without knowing the plan type.
+     *
      * @param array<string,mixed> $inputs
      * @param array<string,mixed> $params
      * @return array{
      *     intro:string,
+     *     details:array{title:string,headers:array<int,string>,rows:array<int,array{label:string,value:string}>},
      *     headers:array<int,string>,
      *     rows:array<int,array<int,string>>,
      *     summary:array<string,string>,
+     *     tokens:array<string,string>,
      *     headline_amount:float
      * }
+     *
+     * `details` is the letter's "Investment Plan Details" table — a list of
+     * label/value rows in the order the letter prints them. A row whose value is
+     * an empty string is omitted by the renderer, so a plan type can vary the
+     * rows it exposes (e.g. monthly-only rows) without branching in the view.
+     *
+     * `tokens` is a flat map of resolved, display-ready strings used to fill
+     * `${token}` placeholders in the plan's summary/terms templates.
      */
     public function compute(array $inputs, array $params): array;
 }

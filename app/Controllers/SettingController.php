@@ -51,21 +51,27 @@ final class SettingController extends Controller
 
         $settings = new Setting();
 
-        // Handle optional logo upload.
-        $logo = $this->request->file('logo');
-        if ($logo !== null && ($logo['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+        // Handle the optional image uploads — the logo and the full-page letter
+        // background. Both are stored and replaced the same way, so they share
+        // one block: each is skipped when no file was sent, and the file it
+        // replaces is deleted only after the new one is safely stored.
+        foreach (['logo' => 'company_logo', 'letterhead' => 'letterhead_image'] as $field => $key) {
+            $file = $this->request->file($field);
+            if ($file === null || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                continue;
+            }
+
             try {
                 $uploader = new UploadService();
-                $filename = $uploader->storeImage($logo, 'logo');
+                $filename = $uploader->storeImage($file, $field);
 
-                // Remove the previous logo file if any.
-                $old = $settings->get('company_logo');
+                $old = $settings->get($key);
                 if ($old !== '') {
                     $uploader->delete($old);
                 }
-                $settings->put('company_logo', $filename);
+                $settings->put($key, $filename);
             } catch (\Throwable $e) {
-                Flash::error('Logo upload failed: ' . $e->getMessage());
+                Flash::error(ucfirst($field) . ' upload failed: ' . $e->getMessage());
                 $this->back('/settings', [], $input);
                 return;
             }

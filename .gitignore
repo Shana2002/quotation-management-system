@@ -17,3 +17,6 @@ Thumbs.db
 *.log
 .idea/
 .vscode/
+graphify-out/
+.claude/
+Royal Plus Quotation New II.pdf

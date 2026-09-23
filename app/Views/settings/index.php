@@ -1,6 +1,9 @@
 <?php
 /** Company settings form. $settings is a key=>value map. */
 $logo = $settings['company_logo'] ?? '';
+$letterhead = $settings['letterhead_image'] ?? '';
+// Quoted in the upload help text below, so it cannot drift from the real cap.
+$maxMb = round(((int) ((array) config('uploads', []))['max_size'] ?? 0) / 1048576);
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="mb-0"><i class="bi bi-gear"></i> Company Settings</h4>
@@ -92,7 +95,24 @@ $logo = $settings['company_logo'] ?? '';
                     <div class="text-muted py-4"><i class="bi bi-image fs-1"></i><div>No logo uploaded</div></div>
                 <?php endif; ?>
                 <input type="file" name="logo" class="form-control" accept="image/png,image/jpeg,image/gif,image/webp">
-                <div class="form-text">PNG/JPG/GIF/WebP, max 2 MB. Appears on quotation PDFs.</div>
+                <div class="form-text">PNG/JPG/GIF/WebP, max <?= (int) $maxMb ?> MB. Appears on report PDFs.</div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mt-4">
+            <div class="card-header bg-transparent">Quotation Letterhead</div>
+            <div class="card-body text-center">
+                <?php if ($letterhead !== ''): ?>
+                    <img src="<?= e(asset('uploads/' . $letterhead)) ?>" alt="Letterhead" class="img-fluid mb-3 border rounded" style="max-height:220px">
+                <?php else: ?>
+                    <img src="<?= e(asset('img/letterhead-default.jpg')) ?>" alt="Default letterhead" class="img-fluid mb-3 border rounded" style="max-height:220px">
+                <?php endif; ?>
+                <input type="file" name="letterhead" class="form-control" accept="image/png,image/jpeg">
+                <div class="form-text text-start">
+                    PNG/JPG, max <?= (int) $maxMb ?> MB. Printed full-page behind every quotation letter,
+                    so use A4 proportions (210 × 297 mm) with the body area left clear.
+                    <?= $letterhead === '' ? 'Currently the built-in letterhead — it is only about 137 dpi, so upload the print-resolution artwork when you have it.' : '' ?>
+                </div>
             </div>
         </div>
 

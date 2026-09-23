@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Flash;
+use App\Core\Placeholder;
 use App\Core\Response;
 use App\Core\Validator;
 use App\Models\ActivityLog;
@@ -101,11 +102,27 @@ final class QuotationController extends Controller
         }
 
         // Compute the projection and enrich it with self-contained render data
-        // (label, title, benefits snapshot) so historical PDFs never change.
+        // (label, title) so historical PDFs never change. `benefits` is captured
+        // too even though the letter no longer prints it: the column is kept
+        // unused for a possible restoration, and snapshotting it here means any
+        // quotation issued before that point still has its own text rather than
+        // whatever the plan says by then.
         $projection = $type->compute($inputs, $params);
         $projection['plan_label']   = $type->label();
         $projection['letter_title'] = $type->letterTitle();
         $projection['benefits']     = (string) ($plan['benefits'] ?? '');
+
+        // Resolve the plan's `${token}` letter templates into concrete text for
+        // THIS quotation. We snapshot the resolved lines rather than the
+        // template, so re-wording a plan (or changing its rates) never rewrites
+        // a quotation that has already been issued.
+        $tokens = array_merge($projection['tokens'] ?? [], [
+            'plan_label'   => $type->label(),
+            'letter_title' => $type->letterTitle(),
+        ]);
+        $projection['tokens']        = $tokens;
+        $projection['summary_lines'] = Placeholder::lines((string) ($plan['summary_template'] ?? ''), $tokens);
+        $projection['terms_lines']   = Placeholder::lines((string) ($plan['terms_template'] ?? ''), $tokens);
 
         $headline = (float) ($projection['headline_amount'] ?? 0);
         $numberService = new QuotationNumberService();

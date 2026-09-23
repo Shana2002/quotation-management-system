@@ -68,9 +68,11 @@ return [
         'idle_timeout' => 60 * 30,     // 30 minutes of inactivity
     ],
 
-    // Secure file upload constraints (logo, etc.).
+    // Secure file upload constraints (logo, letterhead, etc.). The cap is sized
+    // for a print-resolution A4 letterhead — a logo alone would fit in far less.
+    // It is also bounded by PHP's own upload_max_filesize / post_max_size.
     'uploads' => [
-        'max_size'      => 2 * 1024 * 1024, // 2 MB
+        'max_size'      => 8 * 1024 * 1024, // 8 MB
         'allowed_mimes' => ['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
         'allowed_ext'   => ['png', 'jpg', 'jpeg', 'gif', 'webp'],
         'path'          => __DIR__ . '/../public/assets/uploads',

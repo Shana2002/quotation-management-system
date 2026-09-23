@@ -63,6 +63,42 @@ final class MonthlyWealth extends AbstractPlanType
             . "• Backed by an appreciating Agarwood plantation asset.";
     }
 
+    public function defaultSummary(): string
+    {
+        return "Based on the above quotation, the customer invests \${amount} under the \${plan_name} for a term of \${term_label}.\n"
+            . "The agreed monthly re-payment is \${monthly_repay}, payable for \${payments_count} months.\n"
+            . "A maturity benefit of \${maturity_benefit} is paid at the end of the term, giving a total value of \${total_value}.";
+    }
+
+    public function defaultTerms(): string
+    {
+        return "The investment term is \${term_months} months from the agreed commencement date.\n"
+            . "The monthly re-payment of \${monthly_repay} shall be payable according to the agreed payment schedule.\n"
+            . "A maturity benefit of \${maturity_benefit} shall be paid at the end of the term.\n"
+            . "The investment amount is \${amount}.\n"
+            . "Any applicable taxes, statutory deductions, fees, or other charges shall be handled according to the applicable agreement and regulations.\n"
+            . "This quotation is subject to formal acceptance and execution of the relevant investment agreement and required customer documentation.";
+    }
+
+    protected function tokenLabels(): array
+    {
+        return [
+            'plan_name'        => 'Plan name',
+            'amount'           => 'Investment amount with currency',
+            'amount_number'    => 'Investment amount, digits only',
+            'term_months'      => 'Term in months, e.g. "96"',
+            'term_years'       => 'Term in years, e.g. "8"',
+            'term_label'       => 'Term, e.g. "8 Years"',
+            'monthly_repay'    => 'Monthly re-payment amount',
+            'payments_count'   => 'Number of monthly re-payments',
+            'total_repaid'     => 'Sum of all re-payments',
+            'maturity_benefit' => 'Maturity benefit paid at the end',
+            'total_value'      => 'Total value received',
+            'rate_repay'       => 'Monthly re-payment rate as a percentage',
+            'rate_maturity'    => 'Maturity benefit rate as a percentage',
+        ];
+    }
+
     public function validate(array $inputs): array
     {
         return $this->num($inputs['investment'] ?? 0) > 0
@@ -79,14 +115,43 @@ final class MonthlyWealth extends AbstractPlanType
         $maturity     = $investment * ((float) ($params['maturity_benefit_rate'] ?? 25.0) / 100);
         $totalValue   = $totalRepaid + $maturity;
 
+        $termYears = round($months / 12, 1);
+        $termLabel = $termYears . ' Years (' . $months . ' months)';
+
+        $tokens = [
+            'plan_name'        => $this->label(),
+            'amount'           => $this->fmt($investment),
+            'amount_number'    => number_format($investment, 2, '.', ''),
+            'term_months'      => (string) $months,
+            'term_years'       => (string) $termYears,
+            'term_label'       => $termLabel,
+            'monthly_repay'    => $this->fmt($monthlyRepay),
+            'payments_count'   => (string) $months,
+            'total_repaid'     => $this->fmt($totalRepaid),
+            'maturity_benefit' => $this->fmt($maturity),
+            'total_value'      => $this->fmt($totalValue),
+            'rate_repay'       => number_format((float) ($params['monthly_repay_rate'] ?? 1.5), 2) . '%',
+            'rate_maturity'    => number_format((float) ($params['maturity_benefit_rate'] ?? 25.0), 2) . '%',
+        ];
+
         return [
             'intro'   => 'Monthly Wealth plan with a one-time investment, repaid over '
-                . $months . ' months (' . round($months / 12, 1) . ' years), is illustrated below.',
+                . $months . ' months (' . $termYears . ' years), is illustrated below.',
+            'details' => $this->details([
+                'Investment Plan'            => $this->label(),
+                'Investment'                 => $this->fmt($investment),
+                'Investment Term'            => $termLabel,
+                'Monthly Re-payment'         => $this->fmt($monthlyRepay),
+                'Number of Monthly Payments' => (string) $months,
+                'Total Re-payments'          => $this->fmt($totalRepaid),
+                'Maturity Benefit'           => $this->fmt($maturity),
+                'Total Value'                => $this->fmt($totalValue),
+            ]),
             'headers' => ['Investment', 'Monthly Re-payment', 'Term', 'Maturity Benefit', 'Total Value'],
             'rows'    => [[
                 $this->fmt($investment),
                 $this->fmt($monthlyRepay) . ' x ' . $months,
-                round($months / 12, 1) . ' Years',
+                $termYears . ' Years',
                 $this->fmt($maturity),
                 $this->fmt($totalValue),
             ]],
@@ -96,6 +161,7 @@ final class MonthlyWealth extends AbstractPlanType
                 'Maturity benefit'   => $this->fmt($maturity),
                 'Total value'        => $this->fmt($totalValue),
             ],
+            'tokens'          => $tokens,
             'headline_amount' => $investment,
         ];
     }
