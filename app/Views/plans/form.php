@@ -77,12 +77,6 @@ $selectedType = old('plan_type', $plan['plan_type'] ?? array_key_first($types));
             </div>
 
             <div class="col-12">
-                <label class="form-label">Benefits &amp; Conditions</label>
-                <textarea name="benefits" class="form-control" rows="5"><?= e(old('benefits', $plan['benefits'] ?? '')) ?></textarea>
-                <div class="form-text">Shown on the quotation PDF. One bullet per line.</div>
-            </div>
-
-            <div class="col-12">
                 <hr class="mt-2">
                 <div class="alert alert-info py-2 mb-3 small">
                     <strong>Placeholders for this plan type</strong> — click to insert into the Investment Summary.

@@ -19,7 +19,19 @@ powershell -ExecutionPolicy Bypass -File scripts\install_tcpdf.ps1
 
 Verify `libs\tcpdf\tcpdf.php` now exists.
 
-## Step 2 — Create the database
+## Step 2 — Vendor the letter font (no Composer required)
+
+The quotation letter is set in **Carlito**, a metric-compatible Calibri clone. Like TCPDF it is
+downloaded into the git-ignored `libs/`, so this step is per-checkout:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_fonts.ps1
+```
+
+Verify `libs\tcpdf\fonts\carlito.php` now exists. Without it the app still works — it falls back to
+Helvetica — but the letter will not match the issued document's typeface.
+
+## Step 3 — Create the database
 
 Using the MariaDB client bundled with XAMPP:
 
@@ -32,7 +44,7 @@ Or via **phpMyAdmin** (http://localhost/phpmyadmin → *Import* → choose `data
 This creates the `qms` database with all tables, indexes, foreign keys and seed data
 (default admin/manager/executive accounts, demo plans, customers and quotations).
 
-## Step 3 — Configure database credentials (if needed)
+## Step 4 — Configure database credentials (if needed)
 
 Defaults target XAMPP (`127.0.0.1`, user `root`, empty password, database `qms`) and require
 no changes. To override without editing tracked files, create `config/database.local.php`:
@@ -49,7 +61,7 @@ return [
 
 Environment variables (`DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`, `DB_PORT`) also take effect.
 
-## Step 4 — Serve the app
+## Step 5 — Serve the app
 
 ### Option A — PHP built-in server (simplest)
 
@@ -70,7 +82,7 @@ Open **http://localhost:8000**.
 > Tip: For a clean root URL locally, point an Apache VirtualHost `DocumentRoot` at
 > `C:\xampp\htdocs\quotation\public`.
 
-## Step 5 — Sign in
+## Step 6 — Sign in
 
 | Role      | Email                 | Password       |
 |-----------|-----------------------|----------------|
@@ -78,7 +90,9 @@ Open **http://localhost:8000**.
 | Manager   | manager@qms.local     | `Manager@123`  |
 | Executive | executive@qms.local   | `Executive@123`|
 
-Then visit **Settings** (as admin) to set your company name, logo and default terms.
+Then visit **Settings** (as admin) to set your company name and logo, upload the letterhead artwork,
+and set the default terms. The letterhead ships as an extracted ~137 dpi image so letters render
+correctly out of the box — replace it with the print-resolution artwork when you have it.
 
 ## Troubleshooting
 

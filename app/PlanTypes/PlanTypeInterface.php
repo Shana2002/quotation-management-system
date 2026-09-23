@@ -98,7 +98,7 @@ interface PlanTypeInterface
      * @param array<string,mixed> $params
      * @return array{
      *     intro:string,
-     *     details:array{title:string,headers:array<int,string>,sections:array<int,array{title:string,rows:array<int,array{label:string,value:string}>}>},
+     *     details:array{title:string,headers:array<int,string>,rows:array<int,array{label:string,value:string}>},
      *     headers:array<int,string>,
      *     rows:array<int,array<int,string>>,
      *     summary:array<string,string>,
@@ -106,9 +106,9 @@ interface PlanTypeInterface
      *     headline_amount:float
      * }
      *
-     * `details` is the letter's "Investment Plan Details" table — an ordered
-     * list of titled sections, each holding label/value rows. A row whose value
-     * is an empty string is omitted by the renderer, so a plan type can vary the
+     * `details` is the letter's "Investment Plan Details" table — a list of
+     * label/value rows in the order the letter prints them. A row whose value is
+     * an empty string is omitted by the renderer, so a plan type can vary the
      * rows it exposes (e.g. monthly-only rows) without branching in the view.
      *
      * `tokens` is a flat map of resolved, display-ready strings used to fill

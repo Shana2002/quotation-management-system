@@ -4,12 +4,12 @@ $statuses = ['draft', 'sent', 'accepted', 'rejected', 'expired'];
 $headers = $projection['headers'] ?? [];
 $rows    = $projection['rows'] ?? [];
 $summary = $projection['summary'] ?? [];
-$benefits = trim((string) ($projection['benefits'] ?? ''));
 
-// Sectioned "Investment Plan Details" table, as printed on the letter. Absent
-// on quotations issued before that layout, which fall back to headers/rows.
+// Flat "Investment Plan Details" table, as printed on the letter: an ordered
+// list of label/value rows. detailRows() also flattens the sectioned shape
+// carried by quotations issued before that layout, so those still render.
 $details      = is_array($projection['details'] ?? null) ? $projection['details'] : null;
-$sections     = $details['sections'] ?? [];
+$detailRows   = \App\Models\Quotation::detailRows($projection);
 $summaryLines = (array) ($projection['summary_lines'] ?? []);
 $termsLines   = (array) ($projection['terms_lines'] ?? []);
 ?>
@@ -48,7 +48,7 @@ $termsLines   = (array) ($projection['terms_lines'] ?? []);
                     <p><?= e($projection['intro']) ?></p>
                 <?php endif; ?>
 
-                <?php if ($sections !== []): ?>
+                <?php if ($detailRows !== []): ?>
                     <h6 class="text-muted"><?= e($details['title'] ?? 'Investment Plan Details') ?></h6>
                     <div class="table-responsive">
                         <table class="table table-bordered align-middle">
@@ -60,18 +60,11 @@ $termsLines   = (array) ($projection['terms_lines'] ?? []);
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($sections as $section): ?>
-                                    <?php if (trim((string) ($section['title'] ?? '')) !== ''): ?>
-                                        <tr class="table-success">
-                                            <td colspan="2" class="fw-semibold text-success"><?= e($section['title']) ?></td>
-                                        </tr>
-                                    <?php endif; ?>
-                                    <?php foreach (($section['rows'] ?? []) as $row): ?>
-                                        <tr>
-                                            <td class="text-muted"><?= e($row['label'] ?? '') ?></td>
-                                            <td class="fw-semibold"><?= e($row['value'] ?? '') ?></td>
-                                        </tr>
-                                    <?php endforeach; ?>
+                                <?php foreach ($detailRows as $row): ?>
+                                    <tr>
+                                        <td class="text-muted"><?= e($row['label'] ?? '') ?></td>
+                                        <td class="fw-semibold"><?= e($row['value'] ?? '') ?></td>
+                                    </tr>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
@@ -105,7 +98,7 @@ $termsLines   = (array) ($projection['terms_lines'] ?? []);
                     </ol>
                 <?php endif; ?>
 
-                <?php if ($sections === [] && $summary !== []): ?>
+                <?php if ($detailRows === [] && $summary !== []): ?>
                     <div class="row justify-content-end">
                         <div class="col-sm-6">
                             <?php foreach ($summary as $label => $value): ?>
@@ -115,11 +108,6 @@ $termsLines   = (array) ($projection['terms_lines'] ?? []);
                             <?php endforeach; ?>
                         </div>
                     </div>
-                <?php endif; ?>
-
-                <?php if ($benefits !== ''): ?>
-                    <hr><h6 class="text-muted">Benefits &amp; Conditions</h6>
-                    <div class="small text-muted"><?= nl2br(e($benefits)) ?></div>
                 <?php endif; ?>
 
                 <?php if (!empty($quotation['notes'])): ?>

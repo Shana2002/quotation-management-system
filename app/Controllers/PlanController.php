@@ -17,7 +17,8 @@ use App\PlanTypes\PlanTypeRegistry;
  * PlanController — CRUD for OXIAURA's plan-type products. Reads are open to all
  * roles (so quotations can reference plans); writes are admin-only (enforced by
  * route middleware). Each plan carries a plan_type, an editable `parameters`
- * JSON (rates/prices), and `benefits` text.
+ * JSON (rates/prices), and the `${token}` letter templates for its Investment
+ * Summary and Terms & Conditions.
  */
 final class PlanController extends Controller
 {
@@ -115,7 +116,7 @@ final class PlanController extends Controller
     private function validatePlan(): ?array
     {
         $input = $this->request->only([
-            'name', 'plan_type', 'description', 'benefits', 'parameters', 'status',
+            'name', 'plan_type', 'description', 'parameters', 'status',
             'summary_template', 'terms_template',
         ]);
 
@@ -178,7 +179,6 @@ final class PlanController extends Controller
             'description'      => $input['description'] ?? '',
             'amount'           => 0,
             'parameters'       => $paramsJson !== '' ? $paramsJson : '{}',
-            'benefits'         => $input['benefits'] ?? '',
             'summary_template' => (string) ($input['summary_template'] ?? ''),
             'terms_template'   => (string) ($input['terms_template'] ?? ''),
             'status'           => $input['status'],

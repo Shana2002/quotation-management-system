@@ -186,32 +186,17 @@ abstract class InterestPlanType extends AbstractPlanType
                 . 'quotation for Oxiaura ' . $this->label() . ' Plan. Please pay your attention to following rates '
                 . 'for the proposed service/ product of Oxiaura Plantation (Pvt) Ltd.',
             'details' => $this->details([
-                [
-                    'title' => 'Investment Plan',
-                    'rows'  => [
-                        'Investment Plan'  => $this->label(),
-                        'Investment Term'  => $yearLabel,
-                        'Total Investment' => $this->fmt($investment),
-                    ],
-                ],
-                [
-                    'title' => 'Payment Plan',
-                    'rows'  => [
-                        'Payment Method'             => $methodLabel,
-                        'Monthly Return'             => $method === 'monthly' ? $this->fmt($monthlyProfit) : '',
-                        'Number of Monthly Payments' => $method === 'monthly' ? (string) $months : '',
-                        'Annual Return'              => $method === 'annual' ? $this->fmt($annualProfit) : '',
-                        'Total Annual Returns'       => $this->fmt($method === 'monthly' ? $monthlyProfit * 12 : $annualProfit),
-                        'Total Returns Over Term'    => $year > 1 ? $this->fmt($totalProfit) : '',
-                    ],
-                ],
-                [
-                    'title' => 'Investment Principal',
-                    'rows'  => [
-                        'Investment Principal' => $this->fmt($investment),
-                        'Total Maturity Value' => $this->fmt($maturity),
-                    ],
-                ],
+                'Investment Plan'            => $this->label(),
+                'Investment Term'            => $yearLabel,
+                'Total Investment'           => $this->fmt($investment),
+                'Payment Plan'               => $methodLabel,
+                'Monthly Return'             => $method === 'monthly' ? $this->fmt($monthlyProfit) : '',
+                'Number of Monthly Payments' => $method === 'monthly' ? (string) $months : '',
+                'Annual Return'              => $method === 'annual' ? $this->fmt($annualProfit) : '',
+                'Total Annual Returns'       => $method === 'monthly' ? $this->fmt($monthlyProfit * 12) : '',
+                'Total Returns Over Term'    => $year > 1 ? $this->fmt($totalProfit) : '',
+                'Investment Principal'       => $this->fmt($investment),
+                'Total Maturity Value'       => $year > 1 ? $this->fmt($maturity) : '',
             ]),
             'headers' => [
                 'Year',

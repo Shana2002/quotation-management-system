@@ -38,6 +38,39 @@ final class Quotation extends Model
     }
 
     /**
+     * The label/value rows of a projection's "Investment Plan Details" table.
+     *
+     * Quotations issued before that table was flattened carry the same rows
+     * grouped into `details.sections` instead of a flat `details.rows`. The
+     * projection is a snapshot, so an old quotation keeps that shape for good —
+     * this reads both, which is what lets the show view and the letter print a
+     * quotation issued last month without knowing which shape it holds.
+     *
+     * @param array<string,mixed> $projection
+     * @return array<int,array{label:string,value:string}>
+     */
+    public static function detailRows(array $projection): array
+    {
+        $details = $projection['details'] ?? null;
+        if (!is_array($details)) {
+            return [];
+        }
+
+        if (!empty($details['rows'])) {
+            return array_values((array) $details['rows']);
+        }
+
+        $rows = [];
+        foreach ((array) ($details['sections'] ?? []) as $section) {
+            foreach ((array) ($section['rows'] ?? []) as $row) {
+                $rows[] = $row;
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
      * Build a SQL scope fragment + params for the given user.
      *
      * @param array<string,mixed> $user

@@ -142,30 +142,15 @@ final class SupremePlus extends AbstractPlanType
             'intro'   => 'Supreme Plus plan: complete your capital over ' . $payInMonths
                 . ' monthly payments, after which it converts to a Monthly Wealth plan as shown below.',
             'details' => $this->details([
-                [
-                    'title' => 'Contribution Plan',
-                    'rows'  => [
-                        'Investment Plan'          => $this->label(),
-                        'Monthly Payment'          => $this->fmt($monthly),
-                        'Number of Monthly Payments' => (string) $payInMonths,
-                        'Completed Capital'        => $this->fmt($completed),
-                    ],
-                ],
-                [
-                    'title' => 'Payment Plan',
-                    'rows'  => [
-                        'Monthly Re-payment'         => $this->fmt($monthlyRepay),
-                        'Number of Monthly Payments' => (string) $repayMonths,
-                    ],
-                ],
-                [
-                    'title' => 'Returns',
-                    'rows'  => [
-                        'Total Re-payments' => $this->fmt($totalRepaid),
-                        'Maturity Benefit'  => $this->fmt($maturity),
-                        'Total Value'       => $this->fmt($totalValue),
-                    ],
-                ],
+                'Investment Plan'            => $this->label(),
+                'Monthly Payment'            => $this->fmt($monthly),
+                'Number of Monthly Payments' => (string) $payInMonths,
+                'Completed Capital'          => $this->fmt($completed),
+                'Monthly Re-payment'         => $this->fmt($monthlyRepay),
+                'Number of Re-payments'      => (string) $repayMonths,
+                'Total Re-payments'          => $this->fmt($totalRepaid),
+                'Maturity Benefit'           => $this->fmt($maturity),
+                'Total Value'                => $this->fmt($totalValue),
             ]),
             'headers' => ['Monthly Payment', 'Completed Capital', 'Monthly Re-payment', 'Maturity Benefit', 'Total Value'],
             'rows'    => [[

@@ -102,7 +102,11 @@ final class QuotationController extends Controller
         }
 
         // Compute the projection and enrich it with self-contained render data
-        // (label, title, benefits snapshot) so historical PDFs never change.
+        // (label, title) so historical PDFs never change. `benefits` is captured
+        // too even though the letter no longer prints it: the column is kept
+        // unused for a possible restoration, and snapshotting it here means any
+        // quotation issued before that point still has its own text rather than
+        // whatever the plan says by then.
         $projection = $type->compute($inputs, $params);
         $projection['plan_label']   = $type->label();
         $projection['letter_title'] = $type->letterTitle();

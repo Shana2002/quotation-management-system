@@ -94,35 +94,34 @@ abstract class AbstractPlanType implements PlanTypeInterface
     }
 
     /**
-     * Assemble the letter's "Investment Plan Details" table from ordered
-     * sections of label => value rows. Rows whose value is an empty string are
-     * dropped, so a type can list every row it might emit and let the data
-     * decide which appear (e.g. monthly-only rows on an annual payout).
+     * Assemble the letter's "Investment Plan Details" table from an ordered
+     * label => value map. Rows whose value is an empty string are dropped, so a
+     * type can list every row it might emit and let the data decide which
+     * appear (e.g. the monthly-only rows on an annual payout).
      *
-     * @param array<int,array{title?:string,rows:array<string,string>}> $sections
-     * @return array{title:string,headers:array<int,string>,sections:array<int,array{title:string,rows:array<int,array{label:string,value:string}>}>}
+     * The table is deliberately flat rather than grouped into sections: the
+     * reference letter the layout is modelled on is a plain two-column grid,
+     * with rows like "Payment Plan" and "Investment Principal" being ordinary
+     * label/value rows rather than section headings.
+     *
+     * @param array<string,string> $rows
+     * @return array{title:string,headers:array<int,string>,rows:array<int,array{label:string,value:string}>}
      */
-    protected function details(array $sections, string $title = 'Investment Plan Details'): array
+    protected function details(array $rows, string $title = 'Investment Plan Details'): array
     {
         $clean = [];
-        foreach ($sections as $section) {
-            $rows = [];
-            foreach ($section['rows'] ?? [] as $label => $value) {
-                $value = (string) $value;
-                if ($value === '') {
-                    continue;
-                }
-                $rows[] = ['label' => (string) $label, 'value' => $value];
+        foreach ($rows as $label => $value) {
+            $value = (string) $value;
+            if ($value === '') {
+                continue;
             }
-            if ($rows !== []) {
-                $clean[] = ['title' => (string) ($section['title'] ?? ''), 'rows' => $rows];
-            }
+            $clean[] = ['label' => (string) $label, 'value' => $value];
         }
 
         return [
-            'title'    => $title,
-            'headers'  => ['Description', 'Details'],
-            'sections' => $clean,
+            'title'   => $title,
+            'headers' => ['Description', 'Details'],
+            'rows'    => $clean,
         ];
     }
 

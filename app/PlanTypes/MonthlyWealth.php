@@ -138,29 +138,14 @@ final class MonthlyWealth extends AbstractPlanType
             'intro'   => 'Monthly Wealth plan with a one-time investment, repaid over '
                 . $months . ' months (' . $termYears . ' years), is illustrated below.',
             'details' => $this->details([
-                [
-                    'title' => 'Investment Plan',
-                    'rows'  => [
-                        'Investment Plan' => $this->label(),
-                        'Investment'      => $this->fmt($investment),
-                        'Investment Term' => $termLabel,
-                    ],
-                ],
-                [
-                    'title' => 'Payment Plan',
-                    'rows'  => [
-                        'Monthly Re-payment'         => $this->fmt($monthlyRepay),
-                        'Number of Monthly Payments' => (string) $months,
-                    ],
-                ],
-                [
-                    'title' => 'Returns',
-                    'rows'  => [
-                        'Total Re-payments' => $this->fmt($totalRepaid),
-                        'Maturity Benefit'  => $this->fmt($maturity),
-                        'Total Value'       => $this->fmt($totalValue),
-                    ],
-                ],
+                'Investment Plan'            => $this->label(),
+                'Investment'                 => $this->fmt($investment),
+                'Investment Term'            => $termLabel,
+                'Monthly Re-payment'         => $this->fmt($monthlyRepay),
+                'Number of Monthly Payments' => (string) $months,
+                'Total Re-payments'          => $this->fmt($totalRepaid),
+                'Maturity Benefit'           => $this->fmt($maturity),
+                'Total Value'                => $this->fmt($totalValue),
             ]),
             'headers' => ['Investment', 'Monthly Re-payment', 'Term', 'Maturity Benefit', 'Total Value'],
             'rows'    => [[

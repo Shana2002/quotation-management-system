@@ -135,22 +135,12 @@ final class PlantSelling extends AbstractPlanType
         return [
             'intro'   => 'Plant Selling — direct purchase of ' . $cropName . ' plants is illustrated below.',
             'details' => $this->details([
-                [
-                    'title' => 'Order Details',
-                    'rows'  => [
-                        'Investment Plan'  => $this->label(),
-                        'Crop'             => $cropName,
-                        'Number of Plants' => number_format($qty),
-                        'Unit Price'       => $this->fmt($unitPrice),
-                    ],
-                ],
-                [
-                    'title' => 'Investment',
-                    'rows'  => [
-                        'Total Cost'              => $this->fmt($total),
-                        'Projected Harvest Value' => $this->fmt($projectedValue),
-                    ],
-                ],
+                'Investment Plan'         => $this->label(),
+                'Crop'                    => $cropName,
+                'Number of Plants'        => number_format($qty),
+                'Unit Price'              => $this->fmt($unitPrice),
+                'Total Cost'              => $this->fmt($total),
+                'Projected Harvest Value' => $this->fmt($projectedValue),
             ]),
             'headers' => ['Crop', 'No. of Plants', 'Unit Price', 'Total', 'Projected Harvest Value'],
             'rows'    => [[

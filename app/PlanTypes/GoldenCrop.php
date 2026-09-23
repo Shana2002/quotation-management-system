@@ -143,22 +143,12 @@ final class GoldenCrop extends AbstractPlanType
         return [
             'intro'   => 'Golden Crop plan — planting ' . $cropName . ' on your land is illustrated below.',
             'details' => $this->details([
-                [
-                    'title' => 'Plantation Plan',
-                    'rows'  => [
-                        'Investment Plan'          => $this->label(),
-                        'Crop'                     => $cropName,
-                        'Land Extent'              => $extentLabel,
-                        'Units (per 10 Perches)'   => rtrim(rtrim(number_format($units, 2), '0'), '.'),
-                    ],
-                ],
-                [
-                    'title' => 'Investment',
-                    'rows'  => [
-                        'Investment (Planting Cost)' => $this->fmt($investment),
-                        'Projected Harvest Income'   => $this->fmt($projectedHarvest),
-                    ],
-                ],
+                'Investment Plan'            => $this->label(),
+                'Crop'                       => $cropName,
+                'Land Extent'                => $extentLabel,
+                'Units (per 10 Perches)'     => rtrim(rtrim(number_format($units, 2), '0'), '.'),
+                'Investment (Planting Cost)' => $this->fmt($investment),
+                'Projected Harvest Income'   => $this->fmt($projectedHarvest),
             ]),
             'headers' => ['Crop', 'Land Extent', 'Investment', 'Projected Harvest Income'],
             'rows'    => [[
